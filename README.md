@@ -55,6 +55,10 @@ A powerful open-source Google Chrome extension that seamlessly unifies your "Wat
    - 專屬「雲端同步碼 (Sync Code)」，A 電腦存好影片點上傳即可關機。
    - B 電腦任何時候開機輸入代碼，一秒拉取最新播放清單！
    - 同時支援 DeskIn 剪貼簿「一鍵貼上同步」與 JSON 檔案匯出入備份。
+9. **全自動多語言介面（依作業系統語言自適應）**：
+   - 預設自動讀取作業系統/瀏覽器語系 (`navigator.language`)。
+   - 非中文系統自動呈現 English 全英文介面，中文系統自動呈現繁體中文。
+   - 右上角隨時支援自由手動切換（繁體中文 / English / 系統預設）。
 
 ---
 
@@ -131,6 +135,10 @@ A powerful open-source Google Chrome extension that seamlessly unifies your "Wat
 8. **24/7 Asynchronous Cross-Device Cloud Sync**:
    - Uses dedicated Sync Codes (e.g., `dl-xxxxxx` or custom keys) allowing PC A to upload and power down, while PC B downloads anytime later.
    - Zero software installation, zero third-party accounts, and zero cloud console setup required. Also supports DeskIn clipboard one-click paste and JSON export/import.
+9. **Automatic OS-Language Detection & Localization**:
+   - Automatically adapts to the user's operating system/browser language (`navigator.language`).
+   - Defaults to English for non-Chinese operating systems, and Traditional Chinese for Chinese systems.
+   - Provides a clean top-right switcher for on-the-fly toggling between English, Traditional Chinese, and System Auto.
 
 ---
 

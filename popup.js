@@ -25,6 +25,177 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnBatchDelete = document.getElementById("btn-batch-delete");
   const btnCancelSelect = document.getElementById("btn-cancel-select");
 
+  // 多語言切換元件
+  const langSelect = document.getElementById("lang-select");
+  let currentLang = "zh-TW";
+
+  function t(key, params = {}) {
+    return typeof getTranslation === "function" ? getTranslation(currentLang, key, params) : key;
+  }
+
+  // 自動全螢幕與倍速控制元件
+  const chkAutoFullscreen = document.getElementById("chk-auto-fullscreen");
+  const chkAutoSpeed = document.getElementById("chk-auto-speed");
+  const inputPlaybackSpeed = document.getElementById("input-playback-speed");
+
+  const playlistUl = document.getElementById("playlist-ul");
+  const emptyState = document.getElementById("empty-state");
+  const listCounter = document.getElementById("list-counter");
+  const playBtnText = document.getElementById("play-btn-text");
+  const statusBar = document.getElementById("status-bar");
+
+  // Modal 備份相關
+  const modalBackup = document.getElementById("modal-backup");
+  const backupJson = document.getElementById("backup-json");
+  const btnCopyJson = document.getElementById("btn-copy-json");
+  const btnPasteImportJson = document.getElementById("btn-paste-import-json");
+  const btnApplyJson = document.getElementById("btn-apply-json");
+  const btnDownloadJson = document.getElementById("btn-download-json");
+  const btnUploadJson = document.getElementById("btn-upload-json");
+  const fileImportJson = document.getElementById("file-import-json");
+  const btnCloseModal = document.getElementById("btn-close-modal");
+
+  let currentPlaylist = [];
+  let currentPlayState = { isPlaying: false, currentIndex: 0 };
+  let isSelectionMode = false;
+  let selectedIds = new Set();
+  let draggedItemIndex = null;
+
+  // 讀取語言並套用 (預設隨作業系統自動偵測)
+  initLanguage();
+
+  async function initLanguage() {
+    const res = await chrome.storage.local.get(["user_lang"]);
+    const setting = res?.user_lang || "auto";
+    if (langSelect) langSelect.value = setting;
+    currentLang = await getCurrentLanguage();
+    applyUiTranslations();
+  }
+
+  langSelect?.addEventListener("change", async (e) => {
+    const newSetting = e.target.value;
+    await setUserLanguage(newSetting);
+    currentLang = await getCurrentLanguage();
+    applyUiTranslations();
+    renderPlaylist();
+  });
+
+  function applyUiTranslations() {
+    // 頂部與品牌
+    const brandTitle = document.querySelector(".brand-text h1");
+    if (brandTitle) brandTitle.textContent = t("appTitle");
+    const brandSub = document.querySelector(".brand-text .sub-text");
+    if (brandSub) brandSub.textContent = t("appSubtitle");
+
+    updateOpenTabButton();
+
+    if (langSelect) {
+      langSelect.options[0].textContent = t("langAuto");
+      langSelect.options[1].textContent = t("langZh");
+      langSelect.options[2].textContent = t("langEn");
+    }
+
+    // 快速新增區
+    if (inputUrl) inputUrl.placeholder = t("urlPlaceholder");
+    if (btnAddUrl) {
+      btnAddUrl.textContent = t("btnAdd");
+      btnAddUrl.title = t("btnAddTitle");
+    }
+    const btnCloudSyncModal = document.getElementById("btn-cloud-sync-modal");
+    if (btnCloudSyncModal) {
+      btnCloudSyncModal.textContent = t("btnCloudSync");
+      btnCloudSyncModal.title = t("btnCloudSyncTitle");
+    }
+    if (btnReloadSync) {
+      btnReloadSync.textContent = t("btnReload");
+      btnReloadSync.title = t("btnReloadTitle");
+    }
+    if (btnQuickPaste) {
+      btnQuickPaste.textContent = t("btnQuickPaste");
+      btnQuickPaste.title = t("btnQuickPasteTitle");
+    }
+    if (btnAddCurrent) {
+      btnAddCurrent.textContent = t("btnAddCurrent");
+      btnAddCurrent.title = t("btnAddCurrentTitle");
+    }
+    if (btnExportImport) {
+      btnExportImport.textContent = t("btnBackup");
+      btnExportImport.title = t("btnBackupTitle");
+    }
+
+    // 控制列
+    const autoFsSpan = document.querySelector("#chk-auto-fullscreen + span");
+    if (autoFsSpan) autoFsSpan.textContent = t("chkFullscreen");
+    const speedSpan = document.querySelector("#chk-auto-speed + span");
+    if (speedSpan) speedSpan.textContent = t("speedLabel");
+    const sortLbl = document.querySelector(".sort-label");
+    if (sortLbl) sortLbl.textContent = t("sortLabel");
+
+    if (sortSelect) {
+      sortSelect.title = t("sortSelectTitle");
+      sortSelect.options[0].textContent = t("sortManual");
+      sortSelect.options[1].textContent = t("sortDateDesc");
+      sortSelect.options[2].textContent = t("sortDateAsc");
+      sortSelect.options[3].textContent = t("sortPlatform");
+      sortSelect.options[4].textContent = t("sortTitleAsc");
+    }
+
+    if (btnToggleSelect) {
+      btnToggleSelect.textContent = t("btnSelectMode");
+      btnToggleSelect.title = t("btnSelectModeTitle");
+    }
+    if (btnClearAll) {
+      btnClearAll.textContent = t("btnClearAll");
+      btnClearAll.title = t("btnClearAllTitle");
+    }
+
+    // 批次列
+    const selectAllSpan = document.querySelector("#chk-select-all + span");
+    if (selectAllSpan) selectAllSpan.textContent = t("selectAll");
+    if (btnCancelSelect) btnCancelSelect.textContent = t("btnCancelSelect");
+
+    // 空白狀態
+    const emptyTitleElem = document.querySelector(".empty-title");
+    if (emptyTitleElem) emptyTitleElem.textContent = t("emptyTitle");
+    const emptyDescElem = document.querySelector(".empty-desc");
+    if (emptyDescElem) emptyDescElem.innerHTML = t("emptyDesc");
+
+    // 底部提示
+    const footerSpan = document.querySelector(".app-footer span");
+    if (footerSpan) footerSpan.innerHTML = t("footerTip");
+
+    // 雲端彈窗
+    const cloudH3 = document.querySelector("#modal-cloud-sync h3");
+    if (cloudH3) cloudH3.textContent = t("cloudModalTitle");
+    const cloudDesc = document.querySelector("#modal-cloud-sync p");
+    if (cloudDesc) cloudDesc.textContent = t("cloudModalDesc");
+    const syncCodeLbl = document.querySelector("#modal-cloud-sync label");
+    if (syncCodeLbl) syncCodeLbl.textContent = t("syncCodeLabel");
+    const inputSync = document.getElementById("input-sync-code");
+    if (inputSync) inputSync.placeholder = t("inputSyncPlaceholder");
+    const btnCopyCode = document.getElementById("btn-copy-sync-code");
+    if (btnCopyCode) btnCopyCode.textContent = t("btnCopySyncCode");
+    const btnUp = document.getElementById("btn-cloud-upload");
+    if (btnUp) btnUp.textContent = t("btnCloudUpload");
+    const btnDown = document.getElementById("btn-cloud-download");
+    if (btnDown) btnDown.textContent = t("btnCloudDownload");
+    const btnCloseC = document.getElementById("btn-close-cloud-modal");
+    if (btnCloseC) btnCloseC.textContent = t("btnClose");
+    const cloudTipsBox = document.querySelector("#modal-cloud-sync div:last-child");
+    if (cloudTipsBox) cloudTipsBox.innerHTML = t("cloudTips");
+
+    // 備份彈窗
+    const backupH3 = document.querySelector("#modal-backup h3");
+    if (backupH3) backupH3.textContent = t("backupModalTitle");
+    if (backupJson) backupJson.placeholder = t("backupPlaceholder");
+    if (btnCopyJson) btnCopyJson.textContent = t("btnCopyList");
+    if (btnPasteImportJson) btnPasteImportJson.textContent = t("btnPasteList");
+    if (btnApplyJson) btnApplyJson.textContent = t("btnApplyData");
+    if (btnDownloadJson) btnDownloadJson.textContent = t("btnDownloadFile");
+    if (btnUploadJson) btnUploadJson.textContent = t("btnUploadFile");
+    if (btnCloseModal) btnCloseModal.textContent = t("btnClose");
+  }
+
   // 自動全螢幕與倍速控制元件
   const chkAutoFullscreen = document.getElementById("chk-auto-fullscreen");
   const chkAutoSpeed = document.getElementById("chk-auto-speed");
@@ -120,12 +291,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateOpenTabButton() {
     if (!btnOpenTab) return;
     if (isTabMode()) {
-      btnOpenTab.innerHTML = `↙ 縮小返回小視窗`;
-      btnOpenTab.title = "關閉此獨立分頁，恢復為原本的小視窗";
+      btnOpenTab.innerHTML = t("closeFullTab");
+      btnOpenTab.title = t("closeFullTabTitle");
       btnOpenTab.className = "btn btn-danger btn-sm";
     } else {
-      btnOpenTab.innerHTML = `⤢ 開啟全螢幕大分頁`;
-      btnOpenTab.title = "在新分頁開啟全螢幕大視窗檢視";
+      btnOpenTab.innerHTML = t("openFullTab");
+      btnOpenTab.title = t("openFullTabTitle");
       btnOpenTab.className = "btn btn-secondary btn-sm";
     }
   }
@@ -271,9 +442,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateBatchUI() {
     const count = selectedIds.size;
-    batchCountText.textContent = `已選取 ${count} 部`;
+    batchCountText.textContent = t("selectedCount", { n: count });
     btnBatchDelete.disabled = count === 0;
-    btnBatchDelete.textContent = `🗑️ 刪除所選影片 (${count})`;
+    btnBatchDelete.textContent = `${t("btnBatchDelete")} (${count})`;
     if (chkSelectAll) {
       chkSelectAll.checked = currentPlaylist.length > 0 && selectedIds.size === currentPlaylist.length;
     }
@@ -281,16 +452,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 5. 渲染清單
   function renderPlaylist() {
-    listCounter.textContent = `${currentPlaylist.length} 部影片`;
+    listCounter.textContent = t("videosCount", { n: currentPlaylist.length });
 
     // 控制播放按鈕
     if (currentPlayState.isPlaying && currentPlaylist.length > 0) {
       btnStopPlay.style.display = "inline-flex";
-      playBtnText.textContent = `播放中 (${currentPlayState.currentIndex + 1}/${currentPlaylist.length})`;
+      btnStopPlay.innerHTML = `<span class="icon">⏹</span> ${t("btnStopPlay")}`;
+      playBtnText.textContent = `${t("btnPlayAll")} (${currentPlayState.currentIndex + 1}/${currentPlaylist.length})`;
       btnPlayAll.classList.replace("btn-success", "btn-secondary");
     } else {
       btnStopPlay.style.display = "none";
-      playBtnText.textContent = currentPlaylist.length > 0 ? "▶ 從頭自動播放" : "清單尚無影片";
+      playBtnText.textContent = currentPlaylist.length > 0 ? `▶ ${t("btnPlayAll")}` : t("emptyTitle");
       btnPlayAll.classList.replace("btn-secondary", "btn-success");
     }
 
@@ -328,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const durationMetaHtml = cleanDuration
-        ? `<span class="item-duration-tag">⏱️ 片長: <b>${escapeHtml(cleanDuration)}</b></span><span class="meta-dot">•</span>`
+        ? `<span class="item-duration-tag">${t("durationLabel")} <b>${escapeHtml(cleanDuration)}</b></span><span class="meta-dot">•</span>`
         : "";
 
       const checkboxHtml = isSelectionMode
@@ -336,17 +508,17 @@ document.addEventListener("DOMContentLoaded", () => {
         : "";
 
       const dragHandleHtml = !isSelectionMode
-        ? `<div class="item-drag-handle" title="按住滑鼠左鍵拖曳重新排列順序">⋮⋮</div>`
+        ? `<div class="item-drag-handle" title="${t("dragHandleTitle")}">⋮⋮</div>`
         : "";
 
       li.innerHTML = `
         ${checkboxHtml}
         ${dragHandleHtml}
         <div class="item-index">${index + 1}</div>
-        <div class="item-thumb-box" title="按兩下滑鼠左鍵立即播放此影片">
+        <div class="item-thumb-box" title="${t("thumbDblClickTitle")}">
           <img src="${item.thumbnail}" referrerpolicy="no-referrer" alt="thumb">
           <span class="item-platform-badge ${platformBadgeClass}">${platformLabel}</span>
-          <div class="thumb-play-overlay" title="按兩下立即播放">▶</div>
+          <div class="thumb-play-overlay" title="${t("thumbPlayOverlayTitle")}">▶</div>
         </div>
         <div class="item-info">
           <a href="${item.url}" target="_blank" class="item-title" title="${escapeHtml(item.title)}">
@@ -354,13 +526,13 @@ document.addEventListener("DOMContentLoaded", () => {
           </a>
           <div class="item-meta">
             ${durationMetaHtml}
-            <span>加入時間: ${formattedDate}</span>
+            <span>${t("addedLabel")} ${formattedDate}</span>
           </div>
         </div>
         <div class="item-actions">
-          <button class="btn-icon btn-action-top" data-index="${index}" title="移至最上方 (置頂)" ${index === 0 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤒</button>
-          <button class="btn-icon delete btn-remove" data-index="${index}" title="刪除此影片">✕</button>
-          <button class="btn-icon btn-action-bottom" data-index="${index}" title="移至最下方 (置底)" ${index === currentPlaylist.length - 1 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤓</button>
+          <button class="btn-icon btn-action-top" data-index="${index}" title="${t("moveTopTitle")}" ${index === 0 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤒</button>
+          <button class="btn-icon delete btn-remove" data-index="${index}" title="${t("deleteItemTitle")}">✕</button>
+          <button class="btn-icon btn-action-bottom" data-index="${index}" title="${t("moveBottomTitle")}" ${index === currentPlaylist.length - 1 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤓</button>
         </div>
       `;
 

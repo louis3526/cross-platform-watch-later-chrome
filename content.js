@@ -10,6 +10,16 @@
   let hasTriggeredEnd = false;
   let dockElement = null;
   let isMinimized = false;
+  let activeLang = "zh-TW";
+
+  // 依作業系統/使用者偏好載入語言
+  if (typeof getCurrentLanguage === "function") {
+    getCurrentLanguage().then((l) => { activeLang = l; });
+  }
+
+  function ci18n(key, params = {}) {
+    return typeof getTranslation === "function" ? getTranslation(activeLang, key, params) : key;
+  }
 
   // 1. 全域初始化：在所有影片卡片上注入「封面浮動按鈕」
   initCardThumbnailButtons();
@@ -217,8 +227,8 @@
 
     const btn = document.createElement("button");
     btn.className = "cppd-thumb-add-btn";
-    btn.innerHTML = `<span>➕</span> 稍後連播`;
-    btn.title = "加入跨平台稍後觀看清單";
+    btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+    btn.title = ci18n("btnWatchLaterTitle");
 
     // 徹底防穿透：在 btn 上精確阻斷所有會觸發 YouTube/B 站底層跳轉的指針與滑鼠事件冒泡
     const stopEvents = ["mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend"];
@@ -236,8 +246,8 @@
       if (btn.classList.contains("cppd-added")) return;
 
       btn.classList.add("cppd-added");
-      btn.innerHTML = `<span>✓</span> 已加入`;
-      btn.title = "已在清單中";
+      btn.innerHTML = `<span>✓</span> ${ci18n("btnWatchLaterAdded")}`;
+      btn.title = ci18n("btnWatchLaterInList");
 
       // 點擊當下動態複查最新時長 (必須包含時間冒號格式，嚴格排除純數字如 557)
       let finalDuration = videoDuration;
@@ -272,18 +282,18 @@
             if (chrome.runtime.lastError) {
               console.warn("sendMessage error:", chrome.runtime.lastError);
               btn.classList.remove("cppd-added");
-              btn.innerHTML = `<span>➕</span> 稍後連播`;
-              showToast("⚠️ 外掛核心已更新，請按 F5 重新整理頁面！");
+              btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+              showToast(ci18n("toastNeedReload"));
               return;
             }
             const finalTitle = res?.item?.title || videoTitle || "影片";
-            showToast(`已加入跨平台清單: ${finalTitle}`);
+            showToast(ci18n("toastAdded", { title: finalTitle }));
           }
         );
       } catch (err) {
         btn.classList.remove("cppd-added");
-        btn.innerHTML = `<span>➕</span> 稍後連播`;
-        showToast("⚠️ 外掛核心已更新，請按 F5 重新整理頁面！");
+        btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+        showToast(ci18n("toastNeedReload"));
       }
     });
 
@@ -331,13 +341,13 @@
     dockElement.id = "cross-platform-player-dock";
 
     const currentTitle = state.currentItem?.title || document.title;
-    const nextTitle = state.nextItem ? `下一部: ${state.nextItem.title}` : "（此為最後一部）";
+    const nextTitle = state.nextItem ? ci18n("dockNext", { title: state.nextItem.title }) : ci18n("dockLastVideo");
     const currentNum = (state.currentIndex || 0) + 1;
     const totalNum = state.total || 1;
 
     dockElement.innerHTML = `
       <div class="cppd-container" id="cppd-main-box">
-        <div class="cppd-badge" id="cppd-toggle-min" title="點擊收合/展開控制器">
+        <div class="cppd-badge" id="cppd-toggle-min" title="${ci18n("dockToggleTitle")}">
           <span class="cppd-pulse-dot"></span>
           <span>${currentNum} / ${totalNum}</span>
         </div>
@@ -346,10 +356,10 @@
           <div class="cppd-next" title="${escapeHtml(nextTitle)}">${escapeHtml(nextTitle)}</div>
         </div>
         <div class="cppd-actions" id="cppd-actions-box">
-          <button class="cppd-btn" id="cppd-btn-prev" title="上一部">⏮</button>
-          <button class="cppd-btn" id="cppd-btn-next" title="下一部">⏭</button>
-          <button class="cppd-btn" id="cppd-btn-fs" title="一鍵進入最高原生全螢幕 (F)">⛶</button>
-          <button class="cppd-btn cppd-btn-stop" id="cppd-btn-stop" title="停止自動播放">⏹</button>
+          <button class="cppd-btn" id="cppd-btn-prev" title="${ci18n("dockPrevTitle")}">⏮</button>
+          <button class="cppd-btn" id="cppd-btn-next" title="${ci18n("dockNextTitle")}">⏭</button>
+          <button class="cppd-btn" id="cppd-btn-fs" title="${ci18n("dockFsTitle")}">⛶</button>
+          <button class="cppd-btn cppd-btn-stop" id="cppd-btn-stop" title="${ci18n("dockStopTitle")}">⏹</button>
         </div>
       </div>
     `;
@@ -667,7 +677,7 @@
 
     const nextElem = document.querySelector(".cppd-next");
     if (nextElem) {
-      nextElem.textContent = "⌛ 即將為您自動換片，請稍候...";
+      nextElem.textContent = ci18n("dockSwitching");
       nextElem.style.color = "#38bdf8";
     }
 

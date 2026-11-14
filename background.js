@@ -3,12 +3,16 @@
  * 負責：右鍵選單、網址解析與標題獲取、播放狀態管理、分頁轉址跳轉、Google 帳號雲端同步
  */
 
+importScripts("i18n.js");
+
 // 初始化右鍵選單與預設資料（支援從本地平滑遷移至雲端 sync 儲存庫）
-chrome.runtime.onInstalled.addListener(() => {
-  // 建立滑鼠右鍵選單
+chrome.runtime.onInstalled.addListener(async () => {
+  const lang = await getCurrentLanguage();
+
+  // 建立滑鼠右鍵選單 (依作業系統/使用者語言自動設定標題)
   chrome.contextMenus.create({
     id: "add_to_watch_later",
-    title: "➕ 加入跨平台稍後觀看清單",
+    title: getTranslation(lang, "btnWatchLaterTitle"),
     contexts: ["page", "link"]
   });
 
