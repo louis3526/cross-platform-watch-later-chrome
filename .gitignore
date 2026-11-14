@@ -1,0 +1,18 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary and log files
+*.log
+*.tmp
+*.bak
+
+# Node & Editor
+node_modules/
+.vscode/
+.idea/
+*.crx
+*.pem
+default_playlist.json
+

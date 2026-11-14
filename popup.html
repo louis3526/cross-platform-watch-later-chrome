@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>跨平台稍後觀看自動播放器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 頂部標題列 -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">▶</div>
+        <div class="brand-text">
+          <h1>跨平台稍後觀看</h1>
+          <span class="sub-text">YouTube 🔴 ＋ Bilibili 🔵 雙平台自動連播</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-badge" id="list-counter">0 部影片</div>
+        <button id="btn-open-tab" class="btn btn-secondary btn-sm" title="在新分頁開啟全螢幕大視窗檢視">
+          ⤢ 開啟全螢幕大分頁
+        </button>
+      </div>
+    </header>
+
+    <!-- 快速新增區 (單一緊湊列，大幅釋放垂直空間) -->
+    <section class="add-section">
+      <div class="input-group">
+        <input type="text" id="input-url" placeholder="貼上 YouTube 或 Bilibili 影片網址..." autocomplete="off">
+        <button id="btn-add-url" class="btn btn-primary btn-sm" title="新增輸入的網址">➕ 新增</button>
+        <button id="btn-cloud-sync-modal" class="btn btn-primary btn-sm" title="24小時雙機非同步雲端同步 (不用兩台電腦同時開機)">☁️ 雲端同步</button>
+        <button id="btn-reload-sync" class="btn btn-secondary btn-sm" title="立即重新整理並向雲端同步最新清單">🔄 刷新</button>
+        <button id="btn-quick-paste" class="btn btn-success btn-sm" title="透過 DeskIn 共享剪貼簿一鍵貼上同步隔壁電腦的清單">📥 貼上同步</button>
+        <button id="btn-add-current" class="btn btn-secondary btn-sm" title="一鍵收納目前瀏覽器分頁正在看的影片">📌 加入當前分頁</button>
+        <button id="btn-export-import" class="btn btn-ghost btn-sm" title="備份或匯入清單 (JSON)">⇄ 匯出入</button>
+      </div>
+    </section>
+
+    <!-- 播放與排序控制列 (緊湊排版) -->
+    <section class="control-section">
+      <div class="playback-controls">
+        <button id="btn-play-all" class="btn btn-success btn-sm">
+          <span class="icon">▶</span> <span id="play-btn-text">從頭自動播放</span>
+        </button>
+        <button id="btn-stop-play" class="btn btn-danger btn-sm" style="display: none;">
+          <span class="icon">⏹</span> 停止連播
+        </button>
+
+        <!-- 自動全螢幕 -->
+        <label class="toolbar-toggle-label" title="播放每部影片時自動切換至最大全螢幕模式">
+          <input type="checkbox" id="chk-auto-fullscreen" checked>
+          <span>全螢幕</span>
+        </label>
+
+        <!-- 自訂播放倍速 (相容 Speed Controller 之 R/D/S 鍵) -->
+        <div class="speed-control-box" title="勾選開啟後，連播時自動套用指定倍速；播放中仍可用 Speed Controller 插件的 R 鍵重設或 D/S 鍵微調">
+          <label class="toolbar-toggle-label">
+            <input type="checkbox" id="chk-auto-speed">
+            <span>倍速:</span>
+          </label>
+          <input type="number" id="input-playback-speed" value="1.5" min="0.5" max="4.0" step="0.1" class="speed-num-input">
+          <span class="speed-unit">x</span>
+        </div>
+
+        <!-- 排序下拉選單 -->
+        <div class="sort-wrapper">
+          <label for="sort-select" class="sort-label">排序:</label>
+          <select id="sort-select" class="sort-select" title="依照選擇的規則進行排序">
+            <option value="manual">☰ 手動 (滑鼠左鍵拖曳)</option>
+            <option value="date-desc">⏱️ 加入時間 (最新 ➔ 最舊)</option>
+            <option value="date-asc">⏱️ 加入時間 (最舊 ➔ 最新)</option>
+            <option value="platform">📺 平台分組 (YouTube / B站)</option>
+            <option value="title-asc">🔤 標題名稱 (A ➔ Z)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="list-meta-actions">
+        <button id="btn-toggle-select" class="btn btn-secondary btn-sm" title="多選並批次刪除影片">
+          ☑ 選擇式刪除
+        </button>
+        <button id="btn-clear-all" class="btn btn-ghost btn-xs text-danger" title="清空全部影片">
+          🗑️ 清空清單
+        </button>
+      </div>
+    </section>
+
+    <!-- 批次選擇式刪除工具列 (平時隱藏，點擊「選擇式刪除」後浮現) -->
+    <div id="batch-action-bar" class="batch-action-bar" style="display: none;">
+      <div class="batch-left">
+        <label class="batch-checkbox-label">
+          <input type="checkbox" id="chk-select-all">
+          <span>全選</span>
+        </label>
+        <span id="batch-count-text" class="batch-count-text">已選取 0 部</span>
+      </div>
+      <div class="batch-right">
+        <button id="btn-batch-delete" class="btn btn-danger btn-sm" disabled>
+          🗑️ 刪除所選影片
+        </button>
+        <button id="btn-cancel-select" class="btn btn-ghost btn-sm">
+          ✕ 完成
+        </button>
+      </div>
+    </div>
+
+    <!-- 影片清單展示區 (支援滑鼠左鍵按住拖曳排序) -->
+    <main class="playlist-section">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">📺</div>
+        <div class="empty-title">清單空空如也</div>
+        <div class="empty-desc">
+          在上方貼上網址，或在 YouTube / B站影片卡片上<br>
+          <b>點擊左上方「➕ 稍後連播」浮動按鈕</b>！
+        </div>
+      </div>
+      <ul id="playlist-ul" class="playlist-ul">
+        <!-- 動態渲染清單項目 -->
+      </ul>
+    </main>
+
+    <!-- 底部狀態與提示 -->
+    <footer class="app-footer">
+      <div id="status-bar" class="status-bar">
+        <span>💡 按住滑鼠左鍵可直接拖曳上下排列順序</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 匯出/匯入彈窗 Modal -->
+  <div id="modal-backup" class="modal-overlay" style="display: none;">
+    <div class="modal-box">
+      <h3>清單備份與雙機轉移</h3>
+      <textarea id="backup-json" placeholder="在此貼上備份的 JSON 資料..."></textarea>
+      <div class="modal-actions" style="flex-wrap: wrap; gap: 6px;">
+        <button id="btn-copy-json" class="btn btn-primary btn-sm" title="一鍵複製！在目前電腦點這顆">📋 複製清單 (A電腦)</button>
+        <button id="btn-paste-import-json" class="btn btn-success btn-sm" title="一鍵從剪貼簿讀取匯入！在隔壁電腦點這顆">📥 一鍵從剪貼簿匯入 (B電腦)</button>
+        <button id="btn-apply-json" class="btn btn-secondary btn-sm">套用框內資料</button>
+        <button id="btn-download-json" class="btn btn-secondary btn-sm" title="下載成 playlist.json 備份檔案">💾 下載備份檔</button>
+        <input type="file" id="file-import-json" accept=".json" style="display: none;">
+        <button id="btn-upload-json" class="btn btn-secondary btn-sm" title="從電腦檔案匯入清單">📂 選檔案匯入</button>
+        <button id="btn-close-modal" class="btn btn-ghost btn-sm">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 24小時雙機非同步雲端中繼站彈窗 Modal -->
+  <div id="modal-cloud-sync" class="modal-overlay" style="display: none;">
+    <div class="modal-box" style="max-width: 530px;">
+      <h3>☁️ 24 小時雙機雲端同步 (不用同時開機)</h3>
+      <p style="font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        A 電腦存好影片點「上傳備份」後即可關機；B 電腦任何時候開機，只要輸入同一組同步碼，點「下載拉取」，24小時隨時隨地互通！
+      </p>
+      <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label style="font-size: 12.5px; font-weight: 700; color: #38bdf8;">您的雙機專屬同步碼：</label>
+          <span id="sync-code-status" style="font-size: 11px; color: #94a3b8;">未綁定</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="input-sync-code" placeholder="點擊「上傳」自動生成，或在此手動輸入..." style="flex:1; background:#1e293b; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:#fff; font-size:13px; font-weight:700; padding:8px 12px; letter-spacing:0.5px;">
+          <button id="btn-copy-sync-code" class="btn btn-secondary btn-sm" title="複製此同步碼">📋 複製代碼</button>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top: 6px; flex-wrap: wrap; gap: 8px;">
+        <button id="btn-cloud-upload" class="btn btn-success btn-sm" title="將目前清單上傳備份至雲端中繼站 (A電腦點這顆)">☁️ 上傳備份到雲端 (A電腦)</button>
+        <button id="btn-cloud-download" class="btn btn-primary btn-sm" title="從雲端中繼站下載最新清單覆蓋本地 (B電腦點這顆)">📥 從雲端下載同步 (B電腦)</button>
+        <button id="btn-close-cloud-modal" class="btn btn-ghost btn-sm">關閉</button>
+      </div>
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 8px 12px; border-radius: 6px; font-size: 11px; color: #34d399; line-height: 1.5;">
+        💡 <b>雙機非同步超爽玩法</b>：<br>
+        1. 在 <b>A 電腦</b> 點「☁️ 上傳備份到雲端」，自動生成並綁定一組同步碼。<br>
+        2. 到 <b>B 電腦</b> 打開這裡，貼上這組代碼並點「📥 從雲端下載同步」。<br>
+        3. 之後兩台電腦只要按主介面的 <b>「🔄 刷新」</b>，就會全自動在背景雲端連線同步！
+      </div>
+    </div>
+  </div>
+
+  <script src="cloud_sync.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
