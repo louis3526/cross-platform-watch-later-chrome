@@ -272,11 +272,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 1. 載入狀態
+  // 1. 載入狀態 (優先從本地安全快照還原，防清空)
   function loadState() {
+    chrome.storage.local.get(["playlist", "playlist_backup", "playState"], (locRes) => {
+      let list = Array.isArray(locRes?.playlist) ? locRes.playlist : [];
+      if (list.length === 0 && Array.isArray(locRes?.playlist_backup) && locRes.playlist_backup.length > 0) {
+        list = locRes.playlist_backup;
+        chrome.storage.local.set({ playlist: list });
+      }
+
+      if (list.length > 0) {
+        currentPlaylist = list;
+        currentPlayState = locRes?.playState || { isPlaying: false, currentIndex: 0 };
+        renderPlaylist();
+      }
+    });
+
     chrome.runtime.sendMessage({ action: "GET_STATE" }, (res) => {
-      if (res) {
-        currentPlaylist = res.playlist || [];
+      if (res && Array.isArray(res.playlist) && res.playlist.length > 0) {
+        currentPlaylist = res.playlist;
         currentPlayState = res.playState || { isPlaying: false, currentIndex: 0 };
         renderPlaylist();
       }
@@ -914,6 +928,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btnQuickPaste?.addEventListener("click", pasteFromClipboardAndImport);
   btnPasteImportJson?.addEventListener("click", pasteFromClipboardAndImport);
+
+  // 一鍵還原本地快照備份 (防睡前關機或重開被清空)
+  const btnRestoreBackup = document.getElementById("btn-restore-backup");
+  btnRestoreBackup?.addEventListener("click", () => {
+    chrome.storage.local.get(["playlist_backup", "playlist"], (res) => {
+      const backup = res.playlist_backup;
+      if (Array.isArray(backup) && backup.length > 0) {
+        currentPlaylist = backup;
+        savePlaylist(currentPlaylist, () => {
+          renderPlaylist();
+          modalBackup.style.display = "none";
+          alert(`🎉 恭喜！已成功從本地安全快照還原 ${backup.length} 部影片！`);
+        });
+      } else {
+        alert("本地快照中暫無存檔。請點擊「📥 貼上同步」從剪貼簿還原，或從雲端同步！");
+      }
+    });
+  });
 
   btnApplyJson.addEventListener("click", () => {
     try {

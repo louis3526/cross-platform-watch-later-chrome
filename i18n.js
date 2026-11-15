@@ -117,8 +117,8 @@ const I18N_DICT = {
     alertEmptyPlay: "清單是空的，請先加入影片！",
 
     // 網頁浮動按鈕與懸浮控制器 (content.js)
-    btnWatchLater: "➕ 稍後連播",
-    btnWatchLaterAdded: "✓ 已加入",
+    btnWatchLater: "稍後連播",
+    btnWatchLaterAdded: "已加入",
     btnWatchLaterInList: "已在清單中",
     btnWatchLaterTitle: "加入跨平台稍後觀看清單",
     toastAdded: "已加入跨平台清單: {title}",
@@ -246,8 +246,8 @@ const I18N_DICT = {
     alertEmptyPlay: "The playlist is empty, please add videos first!",
 
     // Web Inject Buttons & Floating Dock (content.js)
-    btnWatchLater: "➕ Watch Later",
-    btnWatchLaterAdded: "✓ Added",
+    btnWatchLater: "Watch Later",
+    btnWatchLaterAdded: "Added",
     btnWatchLaterInList: "In Playlist",
     btnWatchLaterTitle: "Add to Cross-Platform Watch Later playlist",
     toastAdded: "Added to Watch Later: {title}",

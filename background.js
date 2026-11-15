@@ -35,14 +35,29 @@ chrome.runtime.onInstalled.addListener(async () => {
 // 常駐背景即刻刷新圖示徽章
 updateBadge();
 
-// 監聽雲端儲存庫變更（隔壁電腦加入或刪除影片，本機即刻同步刷新徽章與快取）
+// 監聽雲端儲存庫變更（隔壁電腦加入或刪除影片，本機即刻同步刷新徽章與快取，絕不允許空資料覆蓋既有清單）
 chrome.storage.onChanged.addListener(async (changes, area) => {
   try {
     if (area === "sync") {
       const list = await getSyncedPlaylist();
+      const loc = await chrome.storage.local.get(["playlist"]);
+      const currentLocal = Array.isArray(loc.playlist) ? loc.playlist : [];
+
+      // 防清空防線：若本地有影片但雲端傳來空清單，嚴禁覆蓋本機！
+      if (list.length === 0 && currentLocal.length > 0) {
+        console.warn("[安全防線] 阻斷空雲端資料覆蓋本地既有影片！");
+        return;
+      }
+
       chrome.storage.local.set({ playlist: list });
+      if (list.length > 0) {
+        chrome.storage.local.set({ playlist_backup: list });
+      }
       updateBadge();
     } else if (area === "local" && changes.playlist) {
+      if (changes.playlist.newValue && changes.playlist.newValue.length > 0) {
+        chrome.storage.local.set({ playlist_backup: changes.playlist.newValue });
+      }
       updateBadge();
     }
   } catch (err) {
@@ -232,15 +247,26 @@ async function getSyncedPlaylist() {
         console.warn("Sync unpack error:", e);
       }
 
-      chrome.storage.local.get(["playlist"], (locData) => {
+      chrome.storage.local.get(["playlist", "playlist_backup"], (locData) => {
         const localList = Array.isArray(locData.playlist) ? locData.playlist : [];
+        const backupList = Array.isArray(locData.playlist_backup) ? locData.playlist_backup : [];
+
+        // 優先防線 1：若本機與雲端暫時皆為空，但本地快照有存檔，秒速自動還原防清空！
+        if (localList.length === 0 && syncList.length === 0 && backupList.length > 0) {
+          console.warn("[安全防線] 偵測到清單暫時為空，自動從本機快照還原", backupList.length, "部影片！");
+          chrome.storage.local.set({ playlist: backupList });
+          resolve(backupList);
+          return;
+        }
+
+        // 優先防線 2：本地大於等於雲端，以本地為準
         if (localList.length >= syncList.length && localList.length > 0) {
           resolve(localList);
         } else if (syncList.length > 0) {
-          chrome.storage.local.set({ playlist: syncList });
+          chrome.storage.local.set({ playlist: syncList, playlist_backup: syncList });
           resolve(syncList);
         } else {
-          resolve(localList);
+          resolve(localList.length > 0 ? localList : backupList);
         }
       });
     });
@@ -251,9 +277,13 @@ async function getSyncedPlaylist() {
  * 寫入雲端同步播放清單 (自動分塊與安全 Promise 封裝，絕對不拋出未捕獲錯誤)
  */
 async function saveSyncedPlaylist(list) {
-  // 1. 同步保存至本地 (10MB 無上限大容量保護，保證本機隨時順暢運行)
+  // 1. 同步保存至本地 (10MB 無上限大容量保護，若非空自動建立 playlist_backup 永久快照)
   try {
-    await chrome.storage.local.set({ playlist: list });
+    const dataToSet = { playlist: list };
+    if (Array.isArray(list) && list.length > 0) {
+      dataToSet.playlist_backup = list;
+    }
+    await chrome.storage.local.set(dataToSet);
     updateBadge();
   } catch (e) {
     console.warn("Local storage write error:", e);
