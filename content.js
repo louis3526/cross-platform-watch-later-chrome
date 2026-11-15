@@ -11,6 +11,7 @@
   let dockElement = null;
   let isMinimized = false;
   let activeLang = "zh-TW";
+  let singleShortBtnState = { url: "", title: "", thumb: "", videoEl: null };
 
   // 依作業系統/使用者偏好載入語言
   if (typeof getCurrentLanguage === "function") {
@@ -295,7 +296,6 @@
   /**
    * 掛載於 document.body 的單一無侵入浮動加入按鈕 (專用於 TikTok / FB Reels，絕對不修改播放器 DOM 或造成影片卡頓)
    */
-  let singleShortBtnState = { url: "", title: "", thumb: "", videoEl: null };
   function updateSingleShortFloatingButton(videoEl, fullUrl, title, thumbUrl) {
     let wrapper = document.getElementById("cppd-short-floating-wrapper");
     if (!videoEl || !fullUrl) {
