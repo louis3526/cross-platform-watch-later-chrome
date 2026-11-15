@@ -277,12 +277,12 @@
 
     for (const v of videos) {
       const rect = v.getBoundingClientRect();
-      if (rect.width < 120 || rect.height < 120) continue;
-      if (rect.bottom < 40 || rect.top > vh - 40 || rect.right < 40 || rect.left > vw - 40) continue;
+      if (rect.width < 100 || rect.height < 100) continue;
+      if (rect.bottom < 20 || rect.top > vh - 20 || rect.right < 20 || rect.left > vw - 20) continue;
       const style = window.getComputedStyle(v);
-      if (style.display === "none" || style.visibility === "hidden" || parseFloat(style.opacity) === 0) continue;
+      if (style.display === "none" || style.visibility === "hidden") continue;
 
-      // 計算距離螢幕中心的接近程度，正在播放的優先 (支援暫停中的影片)
+      // 計算距離螢幕中心的接近程度，正在播放的優先 (支援任何長寬比與暫停中影片)
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const dist = Math.hypot(cx - vw / 2, cy - vh / 2);
@@ -292,6 +292,24 @@
         best = v;
       }
     }
+
+    // 備援：若平台將 <video> 置於 Shadow DOM 或隱藏渲染，改以可見的 feed-video 容器定位
+    if (!best && location.hostname.includes("tiktok.com")) {
+      const containers = Array.from(document.querySelectorAll("[data-e2e='feed-video'], [data-e2e='recommend-list-item-container']"));
+      for (const c of containers) {
+        const rect = c.getBoundingClientRect();
+        if (rect.width < 150 || rect.height < 150) continue;
+        if (rect.bottom < 50 || rect.top > vh - 50) continue;
+        const cy = rect.top + rect.height / 2;
+        const dist = Math.abs(cy - vh / 2);
+        const score = 5000 - dist;
+        if (score > bestScore) {
+          bestScore = score;
+          best = c;
+        }
+      }
+    }
+
     return best;
   }
 
