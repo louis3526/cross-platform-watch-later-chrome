@@ -362,10 +362,14 @@
 
     singleShortBtnState = { url: fullUrl, title, thumb: thumbUrl, videoEl };
 
-    // 精準定位於當前可見影片的左上角
-    wrapper.style.display = "block";
-    wrapper.style.top = `${Math.max(68, Math.round(rect.top + 14))}px`;
-    wrapper.style.left = `${Math.max(16, Math.round(rect.left + 14))}px`;
+    // 精準定位於當前可見影片的左上角 (使用 !important 蓋過 .cppd-thumb-btn-wrapper 的預設 top/left)
+    const isTT = location.hostname.includes("tiktok.com");
+    const leftOffset = isTT && rect.width > 260 ? 48 : 14;
+    wrapper.style.setProperty("display", "block", "important");
+    wrapper.style.setProperty("position", "fixed", "important");
+    wrapper.style.setProperty("top", `${Math.max(12, Math.round(rect.top + 12))}px`, "important");
+    wrapper.style.setProperty("left", `${Math.max(12, Math.round(rect.left + leftOffset))}px`, "important");
+    wrapper.style.setProperty("z-index", "2147483647", "important");
   }
 
   /**
