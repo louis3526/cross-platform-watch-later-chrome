@@ -190,8 +190,9 @@ const CHUNK_SIZE = 8; // 每個分塊 8 部輕量化影片 (約 2.3KB，留有 7
 
 // 將影片項目輕量化壓縮後寫入雲端 (省去 70% 體積)
 function packItemForSync(item) {
+  const pMap = { youtube: "y", bilibili: "b", tiktok: "t", facebook: "f" };
   return {
-    p: item.platform === "youtube" ? "y" : "b",
+    p: pMap[item.platform] || "y",
     v: item.videoId || "",
     t: (item.title || "").slice(0, 100),
     d: item.duration || "",
@@ -206,19 +207,36 @@ function unpackItemFromSync(raw) {
   if (!raw) return null;
   if (raw.platform && raw.url) return raw; // 向下相容完整物件
 
-  const isYt = raw.p === "y" || (!raw.p && raw.v?.length === 11);
-  const platform = isYt ? "youtube" : "bilibili";
+  const pRev = { y: "youtube", b: "bilibili", t: "tiktok", f: "facebook" };
+  const platform = pRev[raw.p] || (raw.v?.length === 11 ? "youtube" : "bilibili");
   const videoId = raw.v || "";
-  const url = raw.u || (isYt ? `https://www.youtube.com/watch?v=${videoId}` : `https://www.bilibili.com/video/${videoId}`);
-  const thumbnail = raw.i || (isYt ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "https://static.hdslb.com/images/favicon.ico");
+  let defaultUrl = "";
+  let defaultThumb = "icons/icon48.png";
+  let defaultTitle = "Video";
+
+  if (platform === "youtube") {
+    defaultUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    defaultThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    defaultTitle = "YouTube 影片";
+  } else if (platform === "bilibili") {
+    defaultUrl = `https://www.bilibili.com/video/${videoId}`;
+    defaultThumb = "https://static.hdslb.com/images/favicon.ico";
+    defaultTitle = "B站影片";
+  } else if (platform === "tiktok") {
+    defaultUrl = raw.u || `https://www.tiktok.com/`;
+    defaultTitle = "TikTok 影片";
+  } else if (platform === "facebook") {
+    defaultUrl = raw.u || `https://www.facebook.com/reel/${videoId}`;
+    defaultTitle = "Facebook Reels";
+  }
 
   return {
-    id: (isYt ? "yt_" : "bili_") + videoId + "_" + (raw.a || Date.now()).toString(36),
+    id: `${platform}_${videoId || "v"}_${(raw.a || Date.now()).toString(36)}`,
     platform,
     videoId,
-    url,
-    title: raw.t || (isYt ? "YouTube 影片" : "B站影片"),
-    thumbnail,
+    url: raw.u || defaultUrl,
+    title: raw.t || defaultTitle,
+    thumbnail: raw.i || defaultThumb,
     duration: raw.d || "",
     addedAt: raw.a || Date.now()
   };
@@ -459,6 +477,64 @@ async function parseVideoInfo(rawUrl, fallbackTitle = "", fallbackDuration = "",
     };
   }
 
+  // 3. TikTok 解析
+  const tiktokMatch = url.match(/tiktok\.com\/(?:@[^\/?#]+\/video\/(\d+)|t\/([a-zA-Z0-9]+))/i) ||
+                      url.match(/vm\.tiktok\.com\/([a-zA-Z0-9]+)/i);
+  if (tiktokMatch || url.includes("tiktok.com/")) {
+    const videoId = tiktokMatch ? (tiktokMatch[1] || tiktokMatch[2] || "") : ("tt_" + Date.now().toString(36));
+    const canonicalUrl = url.split("?")[0];
+    let title = fallbackTitle && !fallbackTitle.includes("TikTok - Make Your Day") ? fallbackTitle : "";
+    let thumbnail = fallbackThumbnail || "";
+
+    // 呼叫 TikTok 官方公開 oEmbed API 取得標題與縮圖
+    try {
+      const resp = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(canonicalUrl)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.title) title = data.title;
+        if (!thumbnail && data.thumbnail_url) thumbnail = data.thumbnail_url;
+      }
+    } catch (e) {
+      console.warn("TikTok oEmbed fetch error:", e);
+    }
+
+    if (!title) title = `TikTok 影片 (${videoId})`;
+    if (!thumbnail) thumbnail = "icons/icon48.png";
+
+    return {
+      id: "tt_" + videoId + "_" + Date.now().toString(36),
+      platform: "tiktok",
+      videoId,
+      url: canonicalUrl,
+      title: title.replace(/\s*\|\s*TikTok$/, ""),
+      thumbnail,
+      duration: fallbackDuration || "",
+      addedAt: Date.now()
+    };
+  }
+
+  // 4. Facebook Reels / Watch / Video 解析
+  const fbMatch = url.match(/facebook\.com\/(?:reel\/(\d+)|share\/r\/([^\/?#]+)|watch\/?\?v=(\d+)|[^\/?#]+\/videos\/(\d+))/i) ||
+                  url.match(/fb\.watch\/([^\/?#]+)/i);
+  if (fbMatch || (url.includes("facebook.com/") && (url.includes("/reel") || url.includes("/videos") || url.includes("/watch")))) {
+    const videoId = (fbMatch && (fbMatch[1] || fbMatch[2] || fbMatch[3] || fbMatch[4])) || ("fb_" + Date.now().toString(36));
+    const canonicalUrl = url.split("&")[0];
+    let title = fallbackTitle && fallbackTitle !== "Facebook" ? fallbackTitle : "";
+    if (!title) title = `Facebook Reels (${videoId})`;
+    const thumbnail = fallbackThumbnail || "icons/icon48.png";
+
+    return {
+      id: "fb_" + videoId + "_" + Date.now().toString(36),
+      platform: "facebook",
+      videoId,
+      url: canonicalUrl,
+      title: title.replace(/\s*\|\s*Facebook$/, ""),
+      thumbnail,
+      duration: fallbackDuration || "",
+      addedAt: Date.now()
+    };
+  }
+
   return null;
 }
 
@@ -518,17 +594,16 @@ async function startPlayback(startIndex = 0) {
     targetTabId = newTab.id;
   }
 
-  // 自動全螢幕：若開啟全螢幕，直接將 Chrome 視窗升級為完全全螢幕 (徹底去除視窗外框、分頁與網址列)
+  // 自動全螢幕：僅對 YouTube 與 B站啟用全螢幕；TikTok / Facebook Reels 保持視窗最大化不強制全螢幕
   const { autoFullscreen } = await chrome.storage.local.get(["autoFullscreen"]);
-  if (autoFullscreen !== false) {
-    try {
-      const activeTab = await chrome.tabs.get(targetTabId);
-      if (activeTab?.windowId) {
-        chrome.windows.update(activeTab.windowId, { state: "fullscreen" });
-      }
-    } catch (e) {
-      console.warn("Auto fullscreen window error:", e);
+  const shouldFullscreen = autoFullscreen !== false && (targetItem.platform === "youtube" || targetItem.platform === "bilibili");
+  try {
+    const activeTab = await chrome.tabs.get(targetTabId);
+    if (activeTab?.windowId) {
+      chrome.windows.update(activeTab.windowId, { state: shouldFullscreen ? "fullscreen" : "maximized" });
     }
+  } catch (e) {
+    console.warn("Auto fullscreen window error:", e);
   }
 
   const newPlayState = {
@@ -587,15 +662,14 @@ async function handleVideoEnded(tabId) {
     if (playState.playerTabId) {
       chrome.tabs.update(playState.playerTabId, { url: nextItem.url });
 
-      // 換片時保持全螢幕無外框狀態
+      // 換片時依據平台決定是否維持全螢幕 (TikTok/FB Reels 不強制全螢幕)
       const { autoFullscreen } = await chrome.storage.local.get(["autoFullscreen"]);
-      if (autoFullscreen !== false) {
-        chrome.tabs.get(playState.playerTabId, (tab) => {
-          if (tab?.windowId) {
-            chrome.windows.update(tab.windowId, { state: "fullscreen" });
-          }
-        });
-      }
+      const shouldFullscreen = autoFullscreen !== false && (nextItem.platform === "youtube" || nextItem.platform === "bilibili");
+      chrome.tabs.get(playState.playerTabId, (tab) => {
+        if (tab?.windowId) {
+          chrome.windows.update(tab.windowId, { state: shouldFullscreen ? "fullscreen" : "maximized" });
+        }
+      });
     }
     updateBadge();
     return { handled: true, nextIndex, nextItem };

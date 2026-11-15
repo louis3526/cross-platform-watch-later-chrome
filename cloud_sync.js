@@ -35,8 +35,9 @@ async function setCloudSyncCode(code) {
  */
 function packListForCloud(list) {
   if (!Array.isArray(list)) return [];
+  const pMap = { youtube: "y", bilibili: "b", tiktok: "t", facebook: "f" };
   return list.map((item) => ({
-    p: item.platform === "youtube" ? "y" : "b",
+    p: pMap[item.platform] || "y",
     v: item.videoId || "",
     t: (item.title || "").slice(0, 100),
     d: item.duration || "",
@@ -51,22 +52,39 @@ function packListForCloud(list) {
  */
 function unpackListFromCloud(rawList) {
   if (!Array.isArray(rawList)) return [];
+  const pRev = { y: "youtube", b: "bilibili", t: "tiktok", f: "facebook" };
   return rawList.map((raw) => {
     if (raw.platform && raw.url) return raw; // 向下相容完整物件
 
-    const isYt = raw.p === "y" || (!raw.p && raw.v?.length === 11);
-    const platform = isYt ? "youtube" : "bilibili";
+    const platform = pRev[raw.p] || (raw.v?.length === 11 ? "youtube" : "bilibili");
     const videoId = raw.v || "";
-    const url = raw.u || (isYt ? `https://www.youtube.com/watch?v=${videoId}` : `https://www.bilibili.com/video/${videoId}`);
-    const thumbnail = raw.i || (isYt ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "https://static.hdslb.com/images/favicon.ico");
+    let defaultUrl = "";
+    let defaultThumb = "icons/icon48.png";
+    let defaultTitle = "Video";
+
+    if (platform === "youtube") {
+      defaultUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      defaultThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      defaultTitle = "YouTube 影片";
+    } else if (platform === "bilibili") {
+      defaultUrl = `https://www.bilibili.com/video/${videoId}`;
+      defaultThumb = "https://static.hdslb.com/images/favicon.ico";
+      defaultTitle = "B站影片";
+    } else if (platform === "tiktok") {
+      defaultUrl = raw.u || `https://www.tiktok.com/`;
+      defaultTitle = "TikTok 影片";
+    } else if (platform === "facebook") {
+      defaultUrl = raw.u || `https://www.facebook.com/reel/${videoId}`;
+      defaultTitle = "Facebook Reels";
+    }
 
     return {
-      id: (isYt ? "yt_" : "bili_") + videoId + "_" + (raw.a || Date.now()).toString(36),
+      id: `${platform}_${videoId || "v"}_${(raw.a || Date.now()).toString(36)}`,
       platform,
       videoId,
-      url,
-      title: raw.t || (isYt ? "YouTube 影片" : "B站影片"),
-      thumbnail,
+      url: raw.u || defaultUrl,
+      title: raw.t || defaultTitle,
+      thumbnail: raw.i || defaultThumb,
       duration: raw.d || "",
       addedAt: raw.a || Date.now()
     };

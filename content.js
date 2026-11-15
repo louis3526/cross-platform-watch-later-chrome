@@ -79,11 +79,17 @@
   function scanAndInjectButtons() {
     const isYouTube = location.hostname.includes("youtube.com");
     const isBilibili = location.hostname.includes("bilibili.com");
+    const isTikTok = location.hostname.includes("tiktok.com");
+    const isFacebook = location.hostname.includes("facebook.com");
 
     if (isYouTube) {
       injectYouTubeCards();
     } else if (isBilibili) {
       injectBilibiliCards();
+    } else if (isTikTok) {
+      injectTikTokCards();
+    } else if (isFacebook) {
+      injectFacebookCards();
     }
   }
 
@@ -217,6 +223,108 @@
       card.dataset.cppdInjected = "true";
       createThumbnailButton(thumbContainer, fullUrl, title, duration, card, thumbUrl);
     });
+  }
+
+  /**
+   * TikTok 卡片與滑動影片注入 (左上角加入按鈕，支援推薦流 / 搜尋 / 個人頁 / 單片頁)
+   */
+  function injectTikTokCards() {
+    // 1. 列表卡片 (個人頁、搜尋頁、探索頁、推薦流項目)
+    const cardSelectors = [
+      "[data-e2e='recommend-list-item-container']",
+      "[data-e2e='feed-video']",
+      "[data-e2e='user-post-item']",
+      "[data-e2e='search_top-item']",
+      "[data-e2e='explore-item']",
+      "div[class*='DivItemContainerV2']",
+      "div[class*='DivItemContainer']"
+    ];
+
+    const cards = document.querySelectorAll(cardSelectors.join(","));
+    cards.forEach((card) => {
+      if (card.dataset.cppdInjected) return;
+
+      const linkElem = card.querySelector("a[href*='/video/']");
+      let fullUrl = "";
+      if (linkElem) {
+        const href = linkElem.getAttribute("href");
+        if (href) fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
+      } else if (location.pathname.includes("/video/")) {
+        fullUrl = location.href.split("?")[0];
+      }
+      if (!fullUrl) return;
+
+      const thumbContainer =
+        card.querySelector("[data-e2e='feed-video'], div[class*='DivVideoWrapper'], div[class*='DivContainer'], a[href*='/video/']") || card;
+
+      const titleElem = card.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
+      const imgElem = card.querySelector("img");
+      const title = titleElem?.textContent?.trim() || imgElem?.getAttribute("alt") || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
+      const thumbUrl = imgElem?.getAttribute("src") || "";
+
+      card.dataset.cppdInjected = "true";
+      createThumbnailButton(thumbContainer, fullUrl, title, "", card, thumbUrl);
+    });
+
+    // 2. 若在 TikTok 單支影片頁 (/video/...) 且尚未注入按鈕，直接掛載於視訊外框左上角
+    if (location.pathname.includes("/video/")) {
+      const videoEl = document.querySelector("video");
+      const playerBox = videoEl?.closest("div[class*='DivVideoContainer'], div[class*='DivBasicPlayerWrapper'], div[class*='DivBrowserModeContainer']") || videoEl?.parentElement;
+      if (playerBox && !playerBox.querySelector(".cppd-thumb-btn-wrapper")) {
+        const titleEl = document.querySelector("[data-e2e='browse-video-desc'], [data-e2e='video-desc']");
+        const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
+        createThumbnailButton(playerBox, location.href.split("?")[0], title, "", playerBox, "");
+      }
+    }
+  }
+
+  /**
+   * Facebook Reels / Watch 影片卡片與播放器注入 (左上角加入按鈕)
+   */
+  function injectFacebookCards() {
+    // 1. 卡片與清單連結 (/reel/, /watch/?v=, /videos/)
+    const links = document.querySelectorAll("a[href*='/reel/'], a[href*='/watch/?v='], a[href*='/videos/']");
+    links.forEach((linkElem) => {
+      const href = linkElem.getAttribute("href");
+      if (!href) return;
+      const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
+      // 略過留言或分享等非影片本體連結
+      if (fullUrl.includes("comment_id=")) return;
+
+      const card =
+        linkElem.closest("div[role='article'], div[data-pagelet*='Reels'], div[class*='x1yztbdb']") ||
+        linkElem;
+      if (card.dataset.cppdInjected) return;
+
+      // 優先找縮圖或影片外框作為掛載容器
+      const imgOrVideo = card.querySelector("img, video");
+      const thumbContainer = imgOrVideo?.closest("div") || linkElem;
+      if (!thumbContainer || thumbContainer.clientHeight < 80) return;
+
+      const title =
+        linkElem.getAttribute("aria-label") ||
+        imgOrVideo?.getAttribute("alt") ||
+        card.querySelector("span[dir='auto']")?.textContent?.trim() ||
+        "Facebook Reels";
+      const thumbUrl = card.querySelector("img")?.getAttribute("src") || "";
+
+      card.dataset.cppdInjected = "true";
+      createThumbnailButton(thumbContainer, fullUrl.split("&")[0], title, "", card, thumbUrl);
+    });
+
+    // 2. 若使用者正在全螢幕/單頁滑動觀看 Facebook Reels (/reel/...)
+    if (location.pathname.includes("/reel")) {
+      const videos = document.querySelectorAll("video");
+      videos.forEach((videoEl) => {
+        if (videoEl.offsetHeight < 200) return;
+        const playerBox = videoEl.closest("div[role='main'] div[class*='x1lliihq'], div[data-pagelet*='Reels']") || videoEl.parentElement?.parentElement || videoEl.parentElement;
+        if (playerBox && !playerBox.querySelector(".cppd-thumb-btn-wrapper")) {
+          const cleanUrl = location.href.split("?")[0];
+          const title = document.title && document.title !== "Facebook" ? document.title.replace(/\s*\|\s*Facebook$/, "") : "Facebook Reels";
+          createThumbnailButton(playerBox, cleanUrl, title, "", playerBox, "");
+        }
+      });
+    }
   }
 
   /**
@@ -643,6 +751,13 @@
    * 綁定 video 結束事件、進度輪詢、自動開播、全螢幕與初始倍速
    */
   function bindVideoEvents(video, state) {
+    const isShortPlatform = location.hostname.includes("tiktok.com") || location.hostname.includes("facebook.com");
+
+    // TikTok 與 Facebook Reels 預設為循環播放，在連播模式下須關閉循環以便觸發換下一部
+    if (isShortPlatform) {
+      video.loop = false;
+    }
+
     setTimeout(() => {
       if (video.paused && !isAdPlaying()) {
         video.play().catch(() => {
@@ -650,8 +765,8 @@
         });
       }
 
-      // 自動全螢幕 (多次守護觸發，確保影片切換後必定全螢幕)
-      if (state?.autoFullscreen !== false) {
+      // 自動全螢幕 (TikTok 與 Facebook Reels 依需求不強制全螢幕，僅 YouTube 與 B站啟用)
+      if (state?.autoFullscreen !== false && !isShortPlatform) {
         ensureFullscreen();
       }
 

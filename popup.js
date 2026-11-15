@@ -485,8 +485,15 @@ document.addEventListener("DOMContentLoaded", () => {
       // 支援滑鼠左鍵拖曳排序
       li.draggable = !isSelectionMode;
 
-      const platformLabel = item.platform === "youtube" ? "YouTube" : "B站";
-      const platformBadgeClass = item.platform === "youtube" ? "badge-youtube" : "badge-bilibili";
+      const platformMap = {
+        youtube: { label: "YouTube", cls: "badge-youtube" },
+        bilibili: { label: "B站", cls: "badge-bilibili" },
+        tiktok: { label: "TikTok", cls: "badge-tiktok" },
+        facebook: { label: "FB Reels", cls: "badge-facebook" }
+      };
+      const pInfo = platformMap[item.platform] || platformMap.youtube;
+      const platformLabel = pInfo.label;
+      const platformBadgeClass = pInfo.cls;
       const formattedDate = formatDate(item.addedAt);
 
       // 嚴格過濾非時長格式純數字 (如 557 等觀看/彈幕數) 與滑鼠懸停預覽假秒數

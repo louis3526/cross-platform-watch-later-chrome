@@ -30,6 +30,8 @@
     "*://*.youtube.com/*",
     "*://*.youtu.be/*",
     "*://*.bilibili.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.facebook.com/*",
     "https://api.bilibili.com/*",
     "https://noembed.com/*",
     "https://api.cl1p.net/*",
@@ -54,7 +56,9 @@
     {
       "matches": [
         "*://*.youtube.com/*",
-        "*://*.bilibili.com/*"
+        "*://*.bilibili.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.facebook.com/*"
       ],
       "js": [
         "i18n.js",

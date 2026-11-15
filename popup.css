@@ -591,6 +591,16 @@ body {
   background-color: var(--accent-bili);
 }
 
+.badge-tiktok {
+  background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.badge-facebook {
+  background-color: #1877f2;
+}
+
 /* 移至縮圖外部、置於加入時間前方的時長標籤 */
 .item-duration-tag {
   color: #38bdf8;

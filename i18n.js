@@ -9,7 +9,7 @@ const I18N_DICT = {
   "zh-TW": {
     // 頂部與品牌
     appTitle: "跨平台稍後觀看",
-    appSubtitle: "YouTube 🔴 ＋ Bilibili 🔵 雙平台自動連播",
+    appSubtitle: "YouTube 🔴 ＋ Bilibili 🔵 ＋ TikTok 🎵 ＋ FB Reels 📘",
     videosCount: "{n} 部影片",
     openFullTab: "⤢ 開啟全螢幕大分頁",
     closeFullTab: "↙ 縮小返回小視窗",
@@ -20,7 +20,7 @@ const I18N_DICT = {
     langEn: "English",
 
     // 工具列
-    urlPlaceholder: "貼上 YouTube 或 Bilibili 影片網址...",
+    urlPlaceholder: "貼上 YouTube / Bilibili / TikTok / FB Reels 影片網址...",
     btnAdd: "➕ 新增",
     btnCloudSync: "☁️ 雲端同步",
     btnReload: "🔄 刷新",
@@ -138,7 +138,7 @@ const I18N_DICT = {
   "en": {
     // Header & Brand
     appTitle: "Cross-Platform Watch Later",
-    appSubtitle: "YouTube 🔴 ＋ Bilibili 🔵 Unified Autoplayer",
+    appSubtitle: "YouTube 🔴 ＋ Bilibili 🔵 ＋ TikTok 🎵 ＋ FB Reels 📘",
     videosCount: "{n} Videos",
     openFullTab: "⤢ Open Full-Tab View",
     closeFullTab: "↙ Return to Popup",
@@ -149,7 +149,7 @@ const I18N_DICT = {
     langEn: "English",
 
     // Toolbar
-    urlPlaceholder: "Paste YouTube or Bilibili video URL...",
+    urlPlaceholder: "Paste YouTube / Bilibili / TikTok / FB Reels URL...",
     btnAdd: "➕ Add",
     btnCloudSync: "☁️ Cloud Sync",
     btnReload: "🔄 Reload",
