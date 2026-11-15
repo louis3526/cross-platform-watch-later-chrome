@@ -196,34 +196,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnCloseModal) btnCloseModal.textContent = t("btnClose");
   }
 
-  // 自動全螢幕與倍速控制元件
-  const chkAutoFullscreen = document.getElementById("chk-auto-fullscreen");
-  const chkAutoSpeed = document.getElementById("chk-auto-speed");
-  const inputPlaybackSpeed = document.getElementById("input-playback-speed");
-
-  const playlistUl = document.getElementById("playlist-ul");
-  const emptyState = document.getElementById("empty-state");
-  const listCounter = document.getElementById("list-counter");
-  const playBtnText = document.getElementById("play-btn-text");
-  const statusBar = document.getElementById("status-bar");
-
-  // Modal 備份相關
-  const modalBackup = document.getElementById("modal-backup");
-  const backupJson = document.getElementById("backup-json");
-  const btnCopyJson = document.getElementById("btn-copy-json");
-  const btnPasteImportJson = document.getElementById("btn-paste-import-json");
-  const btnApplyJson = document.getElementById("btn-apply-json");
-  const btnDownloadJson = document.getElementById("btn-download-json");
-  const btnUploadJson = document.getElementById("btn-upload-json");
-  const fileImportJson = document.getElementById("file-import-json");
-  const btnCloseModal = document.getElementById("btn-close-modal");
-
-  let currentPlaylist = [];
-  let currentPlayState = { isPlaying: false, currentIndex: 0 };
-  let isSelectionMode = false;
-  let selectedIds = new Set();
-  let draggedItemIndex = null;
-
   // 讀取全螢幕與倍速設定
   chrome.storage.local.get(["autoFullscreen", "autoSpeedEnabled", "playbackSpeed"], (res) => {
     if (chkAutoFullscreen) chkAutoFullscreen.checked = res.autoFullscreen !== false;
