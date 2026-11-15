@@ -23,8 +23,8 @@
     "*://*.bilibili.com/*",
     "https://api.bilibili.com/*",
     "https://noembed.com/*",
-    "https://api.npoint.io/*",
-    "https://*/*"
+    "https://api.cl1p.net/*",
+    "https://api.npoint.io/*"
   ],
   "background": {
     "service_worker": "background.js"

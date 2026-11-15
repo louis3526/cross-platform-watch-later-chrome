@@ -15,4 +15,5 @@ node_modules/
 *.crx
 *.pem
 default_playlist.json
+dist/
 
