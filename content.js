@@ -377,6 +377,7 @@
     if (activeVideo) {
       const article =
         activeVideo.closest("article, [data-e2e='recommend-list-item-container'], [data-e2e='feed-video'], div[class*='DivItemContainer']") ||
+        activeVideo.parentElement?.parentElement ||
         document;
 
       let fullUrl = "";
@@ -387,22 +388,41 @@
       } else if (location.pathname.includes("/video/")) {
         fullUrl = location.href.split("?")[0];
       } else {
-        const xgEl = activeVideo.closest("[id^='xgwrapper-']") || article.querySelector("[id^='xgwrapper-']");
-        const idMatch = xgEl?.id?.match(/(\d{15,22})$/);
+        // 廣度搜尋任何包含 17~21 位數字影片 ID 的元素 id（新版 TikTok 推薦流）
         const authorHref = article.querySelector("a[href^='/@']")?.getAttribute("href")?.split("?")[0] || "/@i";
-        if (idMatch) {
-          fullUrl = `https://www.tiktok.com${authorHref}/video/${idMatch[1]}`;
+        const idHolder =
+          activeVideo.closest("[id]") ||
+          article.querySelector("[id*='xgwrapper'], [id*='video']");
+        let vidMatch = idHolder?.id?.match(/(\d{17,21})/);
+        if (!vidMatch) {
+          const allWithId = article.querySelectorAll("[id]");
+          for (const el of allWithId) {
+            const m = el.id.match(/(\d{17,21})/);
+            if (m) {
+              vidMatch = m;
+              break;
+            }
+          }
+        }
+        if (vidMatch) {
+          fullUrl = `https://www.tiktok.com${authorHref}/video/${vidMatch[1]}`;
+        } else {
+          // 檢查 canonical 或直接使用作者/當前頁網址作為保底，確保按鈕必現
+          const canonical = document.querySelector("link[rel='canonical']")?.getAttribute("href") || "";
+          if (canonical.includes("/video/")) {
+            fullUrl = canonical.split("?")[0];
+          } else {
+            fullUrl = authorHref !== "/@i" ? `https://www.tiktok.com${authorHref}` : location.href.split("?")[0];
+          }
         }
       }
 
-      if (fullUrl) {
-        const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
-        const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
-        const thumbImg = article.querySelector("img[src*='tiktokcdn']");
-        const thumbUrl = activeVideo.poster || thumbImg?.getAttribute("src") || "";
-        updateSingleShortFloatingButton(activeVideo, fullUrl.split("?")[0], title, thumbUrl);
-        return;
-      }
+      const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
+      const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
+      const thumbImg = article.querySelector("img[src*='tiktokcdn']");
+      const thumbUrl = activeVideo.poster || thumbImg?.getAttribute("src") || "";
+      updateSingleShortFloatingButton(activeVideo, fullUrl.split("?")[0], title, thumbUrl);
+      return;
     }
 
     // 2. 個人主頁 / 搜尋頁 / 探索頁縮圖格狀卡片 (無主播放影片時)
