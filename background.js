@@ -191,6 +191,7 @@ const CHUNK_SIZE = 8; // 每個分塊 8 部輕量化影片 (約 2.3KB，留有 7
 // 將影片項目輕量化壓縮後寫入雲端 (省去 70% 體積)
 function packItemForSync(item) {
   const pMap = { youtube: "y", bilibili: "b", tiktok: "t", facebook: "f" };
+  const thumb = (item.thumbnail || "").startsWith("data:") ? "" : (item.thumbnail || "");
   return {
     p: pMap[item.platform] || "y",
     v: item.videoId || "",
@@ -198,7 +199,7 @@ function packItemForSync(item) {
     d: item.duration || "",
     a: item.addedAt || Date.now(),
     u: item.url || "",
-    i: item.thumbnail || ""
+    i: thumb
   };
 }
 

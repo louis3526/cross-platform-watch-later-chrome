@@ -226,105 +226,144 @@
   }
 
   /**
-   * TikTok 卡片與滑動影片注入 (左上角加入按鈕，支援推薦流 / 搜尋 / 個人頁 / 單片頁)
+   * 嘗試從 <video> 擷取即時畫面縮圖 (JPEG DataURL，供 TikTok / FB Reels 使用)
+   */
+  function captureVideoFrame(container) {
+    try {
+      const video = container?.querySelector("video") || (container?.tagName === "VIDEO" ? container : null);
+      if (!video) return "";
+      if (video.poster && !video.poster.startsWith("data:")) return video.poster;
+      if (video.readyState < 2 || video.videoWidth === 0) return "";
+
+      const w = 160;
+      const h = Math.max(90, Math.round((video.videoHeight / video.videoWidth) * w));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, w, h);
+      return canvas.toDataURL("image/jpeg", 0.7);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  /**
+   * TikTok 卡片與滑動影片注入 (左上角精準單一按鈕，支援推薦流 / 搜尋 / 個人頁 / 單片頁)
    */
   function injectTikTokCards() {
-    // 1. 列表卡片 (個人頁、搜尋頁、探索頁、推薦流項目)
-    const cardSelectors = [
-      "[data-e2e='recommend-list-item-container']",
-      "[data-e2e='feed-video']",
-      "[data-e2e='user-post-item']",
-      "[data-e2e='search_top-item']",
-      "[data-e2e='explore-item']",
-      "div[class*='DivItemContainerV2']",
-      "div[class*='DivItemContainer']"
-    ];
+    // 1. 掃描畫面中實際播放的 <video> (涵蓋 For You 推薦流與單支影片頁)
+    const videos = document.querySelectorAll("video");
+    videos.forEach((videoEl) => {
+      const rect = videoEl.getBoundingClientRect();
+      if (rect.width < 150 || rect.height < 200) return;
 
-    const cards = document.querySelectorAll(cardSelectors.join(","));
-    cards.forEach((card) => {
-      if (card.dataset.cppdInjected) return;
+      const playerBox = videoEl.parentElement;
+      if (!playerBox || playerBox.querySelector(".cppd-thumb-btn-wrapper")) return;
 
-      const linkElem = card.querySelector("a[href*='/video/']");
+      const article =
+        videoEl.closest("article, [data-e2e='recommend-list-item-container'], [data-e2e='feed-video'], div[class*='DivItemContainer']") ||
+        playerBox;
+
+      // 取得該影片網址
       let fullUrl = "";
+      const linkElem = article.querySelector("a[href*='/video/']");
       if (linkElem) {
         const href = linkElem.getAttribute("href");
         if (href) fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
       } else if (location.pathname.includes("/video/")) {
         fullUrl = location.href.split("?")[0];
+      } else {
+        // 從 xgwrapper id 解析影片 ID 與作者帳號
+        const xgEl = videoEl.closest("[id^='xgwrapper-']") || article.querySelector("[id^='xgwrapper-']");
+        const idMatch = xgEl?.id?.match(/(\d{15,22})$/);
+        const authorHref = article.querySelector("a[href^='/@']")?.getAttribute("href")?.split("?")[0] || "/@i";
+        if (idMatch) {
+          fullUrl = `https://www.tiktok.com${authorHref}/video/${idMatch[1]}`;
+        }
       }
+
       if (!fullUrl) return;
 
-      const thumbContainer =
-        card.querySelector("[data-e2e='feed-video'], div[class*='DivVideoWrapper'], div[class*='DivContainer'], a[href*='/video/']") || card;
+      const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
+      const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
+      const thumbImg = article.querySelector("img[src*='tiktokcdn']");
+      const thumbUrl = videoEl.poster || thumbImg?.getAttribute("src") || "";
 
-      const titleElem = card.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
-      const imgElem = card.querySelector("img");
-      const title = titleElem?.textContent?.trim() || imgElem?.getAttribute("alt") || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
-      const thumbUrl = imgElem?.getAttribute("src") || "";
-
-      card.dataset.cppdInjected = "true";
-      createThumbnailButton(thumbContainer, fullUrl, title, "", card, thumbUrl);
+      createThumbnailButton(playerBox, fullUrl.split("?")[0], title, "", article, thumbUrl);
     });
 
-    // 2. 若在 TikTok 單支影片頁 (/video/...) 且尚未注入按鈕，直接掛載於視訊外框左上角
-    if (location.pathname.includes("/video/")) {
-      const videoEl = document.querySelector("video");
-      const playerBox = videoEl?.closest("div[class*='DivVideoContainer'], div[class*='DivBasicPlayerWrapper'], div[class*='DivBrowserModeContainer']") || videoEl?.parentElement;
-      if (playerBox && !playerBox.querySelector(".cppd-thumb-btn-wrapper")) {
-        const titleEl = document.querySelector("[data-e2e='browse-video-desc'], [data-e2e='video-desc']");
-        const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
-        createThumbnailButton(playerBox, location.href.split("?")[0], title, "", playerBox, "");
-      }
-    }
+    // 2. 個人主頁 / 搜尋頁 / 探索頁縮圖格狀卡片
+    const gridCards = document.querySelectorAll("[data-e2e='user-post-item'], [data-e2e='search_top-item'], [data-e2e='explore-item']");
+    gridCards.forEach((card) => {
+      if (card.dataset.cppdInjected) return;
+      const linkElem = card.querySelector("a[href*='/video/']");
+      const imgElem = card.querySelector("img");
+      if (!linkElem || !imgElem || imgElem.clientWidth < 80) return;
+
+      const href = linkElem.getAttribute("href");
+      const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
+      const thumbContainer = imgElem.parentElement || card;
+      if (thumbContainer.querySelector(".cppd-thumb-btn-wrapper")) return;
+
+      const title =
+        card.querySelector("[data-e2e='video-desc'], [data-e2e='search-card-desc']")?.textContent?.trim() ||
+        imgElem.getAttribute("alt") ||
+        "TikTok 影片";
+      const thumbUrl = imgElem.getAttribute("src") || "";
+
+      card.dataset.cppdInjected = "true";
+      createThumbnailButton(thumbContainer, fullUrl.split("?")[0], title, "", card, thumbUrl);
+    });
   }
 
   /**
-   * Facebook Reels / Watch 影片卡片與播放器注入 (左上角加入按鈕)
+   * Facebook Reels / Watch 影片注入 (僅在實際影片畫面左上角掛載單一按鈕，絕不洗版)
    */
   function injectFacebookCards() {
-    // 1. 卡片與清單連結 (/reel/, /watch/?v=, /videos/)
-    const links = document.querySelectorAll("a[href*='/reel/'], a[href*='/watch/?v='], a[href*='/videos/']");
-    links.forEach((linkElem) => {
-      const href = linkElem.getAttribute("href");
-      if (!href) return;
-      const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
-      // 略過留言或分享等非影片本體連結
-      if (fullUrl.includes("comment_id=")) return;
-
-      const card =
-        linkElem.closest("div[role='article'], div[data-pagelet*='Reels'], div[class*='x1yztbdb']") ||
-        linkElem;
-      if (card.dataset.cppdInjected) return;
-
-      // 優先找縮圖或影片外框作為掛載容器
-      const imgOrVideo = card.querySelector("img, video");
-      const thumbContainer = imgOrVideo?.closest("div") || linkElem;
-      if (!thumbContainer || thumbContainer.clientHeight < 80) return;
-
-      const title =
-        linkElem.getAttribute("aria-label") ||
-        imgOrVideo?.getAttribute("alt") ||
-        card.querySelector("span[dir='auto']")?.textContent?.trim() ||
-        "Facebook Reels";
-      const thumbUrl = card.querySelector("img")?.getAttribute("src") || "";
-
-      card.dataset.cppdInjected = "true";
-      createThumbnailButton(thumbContainer, fullUrl.split("&")[0], title, "", card, thumbUrl);
-    });
-
-    // 2. 若使用者正在全螢幕/單頁滑動觀看 Facebook Reels (/reel/...)
+    // 1. Reels 全螢幕/獨立檢視模式 (/reel/... 或 /reels/...)：僅對畫面中可見的主 <video> 掛載單一按鈕
     if (location.pathname.includes("/reel")) {
       const videos = document.querySelectorAll("video");
       videos.forEach((videoEl) => {
-        if (videoEl.offsetHeight < 200) return;
-        const playerBox = videoEl.closest("div[role='main'] div[class*='x1lliihq'], div[data-pagelet*='Reels']") || videoEl.parentElement?.parentElement || videoEl.parentElement;
-        if (playerBox && !playerBox.querySelector(".cppd-thumb-btn-wrapper")) {
-          const cleanUrl = location.href.split("?")[0];
-          const title = document.title && document.title !== "Facebook" ? document.title.replace(/\s*\|\s*Facebook$/, "") : "Facebook Reels";
-          createThumbnailButton(playerBox, cleanUrl, title, "", playerBox, "");
-        }
+        const rect = videoEl.getBoundingClientRect();
+        if (rect.width < 150 || rect.height < 200) return;
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+
+        const playerBox = videoEl.parentElement;
+        if (!playerBox || playerBox.querySelector(".cppd-thumb-btn-wrapper")) return;
+
+        const cleanUrl = location.href.split("?")[0];
+        const title = document.title && document.title !== "Facebook" ? document.title.replace(/\s*\|\s*Facebook$/, "") : "Facebook Reels";
+        const poster = videoEl.poster || "";
+
+        createThumbnailButton(playerBox, cleanUrl, title, "", playerBox, poster);
       });
+      return;
     }
+
+    // 2. Facebook 動態時報 / Watch 列表：僅在包含大型封面圖或影片的連結本體上掛載單一按鈕
+    const links = document.querySelectorAll("a[href*='/reel/'], a[href*='/watch/?v=']");
+    links.forEach((linkElem) => {
+      const href = linkElem.getAttribute("href");
+      if (!href || href.includes("comment_id=")) return;
+
+      const mediaEl = linkElem.querySelector("img, video");
+      if (!mediaEl) return;
+      const rect = mediaEl.getBoundingClientRect();
+      if (rect.width < 140 || rect.height < 140) return;
+
+      const thumbContainer = mediaEl.parentElement;
+      if (!thumbContainer || thumbContainer.querySelector(".cppd-thumb-btn-wrapper")) return;
+
+      const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
+      const title =
+        linkElem.getAttribute("aria-label") ||
+        mediaEl.getAttribute("alt") ||
+        "Facebook Reels";
+      const thumbUrl = mediaEl.tagName === "IMG" ? (mediaEl.getAttribute("src") || "") : (mediaEl.poster || "");
+
+      createThumbnailButton(thumbContainer, fullUrl.split("&")[0], title, "", linkElem, thumbUrl);
+    });
   }
 
   /**
@@ -387,7 +426,7 @@
         }
       }
 
-      // 點擊當下動態複查最新封面縮圖
+      // 點擊當下動態複查最新封面縮圖 (優先擷取 <img>，若無則直接從 <video> 截取即時畫面幀)
       let finalThumb = videoThumb;
       if (!finalThumb && card) {
         const img = card.querySelector(".bili-video-card__image--wrap img, picture img, ytd-thumbnail img, img");
@@ -395,6 +434,9 @@
         if (src.startsWith("//")) src = "https:" + src;
         else if (src.startsWith("http://")) src = src.replace("http://", "https://");
         if (src && !src.includes("data:image")) finalThumb = src;
+      }
+      if (!finalThumb) {
+        finalThumb = captureVideoFrame(card || container);
       }
 
       // 呼叫 Background 加入清單（附帶時長與縮圖）
