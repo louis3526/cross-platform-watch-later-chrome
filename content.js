@@ -249,23 +249,136 @@
   }
 
   /**
-   * TikTok 卡片與滑動影片注入 (左上角精準單一按鈕，支援推薦流 / 搜尋 / 個人頁 / 單片頁)
+   * 找到目前畫面正中央 / 正在播放的單一主 <video>（不改動平台內部 DOM）
+   */
+  function findVisibleCenterVideo() {
+    const videos = Array.from(document.querySelectorAll("video"));
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let best = null;
+    let bestScore = -1;
+
+    for (const v of videos) {
+      const rect = v.getBoundingClientRect();
+      if (rect.width < 150 || rect.height < 200) continue;
+      if (rect.bottom < 80 || rect.top > vh - 80 || rect.right < 80 || rect.left > vw - 80) continue;
+      const style = window.getComputedStyle(v);
+      if (style.display === "none" || style.visibility === "hidden" || parseFloat(style.opacity) === 0) continue;
+
+      // 計算距離螢幕中心的接近程度，正在播放的優先
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dist = Math.hypot(cx - vw / 2, cy - vh / 2);
+      const score = (v.paused ? 0 : 10000) - dist;
+      if (score > bestScore) {
+        bestScore = score;
+        best = v;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * 掛載於 document.body 的單一無侵入浮動加入按鈕 (專用於 TikTok / FB Reels，絕對不修改播放器 DOM 或造成影片卡頓)
+   */
+  let singleShortBtnState = { url: "", title: "", thumb: "", videoEl: null };
+  function updateSingleShortFloatingButton(videoEl, fullUrl, title, thumbUrl) {
+    let wrapper = document.getElementById("cppd-short-floating-wrapper");
+    if (!videoEl || !fullUrl) {
+      if (wrapper) wrapper.style.display = "none";
+      return;
+    }
+
+    const rect = videoEl.getBoundingClientRect();
+    if (!wrapper) {
+      wrapper = document.createElement("div");
+      wrapper.id = "cppd-short-floating-wrapper";
+      wrapper.className = "cppd-thumb-btn-wrapper";
+      wrapper.style.position = "fixed";
+      wrapper.style.zIndex = "2147483647";
+
+      const btn = document.createElement("button");
+      btn.id = "cppd-short-floating-btn";
+      btn.className = "cppd-thumb-add-btn";
+
+      const sp = document.createElement("span");
+      sp.textContent = "➕";
+      btn.replaceChildren(sp, document.createTextNode(" " + ci18n("btnWatchLater")));
+      btn.title = ci18n("btnWatchLaterTitle");
+
+      ["mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend"].forEach((evt) => {
+        btn.addEventListener(evt, (e) => e.stopPropagation());
+      });
+
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.classList.contains("cppd-added")) return;
+
+        btn.classList.add("cppd-added");
+        const spOk = document.createElement("span");
+        spOk.textContent = "✓";
+        btn.replaceChildren(spOk, document.createTextNode(" " + ci18n("btnWatchLaterAdded")));
+        btn.title = ci18n("btnWatchLaterInList");
+
+        const st = singleShortBtnState;
+        const thumb = st.thumb || captureVideoFrame(st.videoEl);
+
+        try {
+          chrome.runtime.sendMessage(
+            { action: "PARSE_AND_ADD", url: st.url, title: st.title, duration: "", thumbnail: thumb },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                btn.classList.remove("cppd-added");
+                const spRetry = document.createElement("span");
+                spRetry.textContent = "➕";
+                btn.replaceChildren(spRetry, document.createTextNode(" " + ci18n("btnWatchLater")));
+                showToast(ci18n("toastNeedReload"));
+                return;
+              }
+              const finalTitle = res?.item?.title || st.title || "Video";
+              showToast(ci18n("toastAdded", { title: finalTitle }));
+            }
+          );
+        } catch (err) {
+          btn.classList.remove("cppd-added");
+          showToast(ci18n("toastNeedReload"));
+        }
+      });
+
+      wrapper.appendChild(btn);
+      document.body.appendChild(wrapper);
+    }
+
+    // 若切換到了不同的短片網址，重設按鈕為「➕ 稍後連播」
+    const btn = document.getElementById("cppd-short-floating-btn");
+    if (singleShortBtnState.url !== fullUrl && btn) {
+      btn.classList.remove("cppd-added");
+      const sp = document.createElement("span");
+      sp.textContent = "➕";
+      btn.replaceChildren(sp, document.createTextNode(" " + ci18n("btnWatchLater")));
+      btn.title = ci18n("btnWatchLaterTitle");
+    }
+
+    singleShortBtnState = { url: fullUrl, title, thumb: thumbUrl, videoEl };
+
+    // 精準定位於當前可見影片的左上角
+    wrapper.style.display = "block";
+    wrapper.style.top = `${Math.max(68, Math.round(rect.top + 14))}px`;
+    wrapper.style.left = `${Math.max(16, Math.round(rect.left + 14))}px`;
+  }
+
+  /**
+   * TikTok 卡片與滑動影片注入 (無侵入單一浮動按鈕 + 個人頁格狀縮圖)
    */
   function injectTikTokCards() {
-    // 1. 掃描畫面中實際播放的 <video> (涵蓋 For You 推薦流與單支影片頁)
-    const videos = document.querySelectorAll("video");
-    videos.forEach((videoEl) => {
-      const rect = videoEl.getBoundingClientRect();
-      if (rect.width < 150 || rect.height < 200) return;
-
-      const playerBox = videoEl.parentElement;
-      if (!playerBox || playerBox.querySelector(".cppd-thumb-btn-wrapper")) return;
-
+    // 1. 推薦流 / 單支影片：僅針對畫面中心唯一的主 <video> 顯示左上角按鈕，絕不碰播放器內部 DOM
+    const activeVideo = findVisibleCenterVideo();
+    if (activeVideo) {
       const article =
-        videoEl.closest("article, [data-e2e='recommend-list-item-container'], [data-e2e='feed-video'], div[class*='DivItemContainer']") ||
-        playerBox;
+        activeVideo.closest("article, [data-e2e='recommend-list-item-container'], [data-e2e='feed-video'], div[class*='DivItemContainer']") ||
+        document;
 
-      // 取得該影片網址
       let fullUrl = "";
       const linkElem = article.querySelector("a[href*='/video/']");
       if (linkElem) {
@@ -274,8 +387,7 @@
       } else if (location.pathname.includes("/video/")) {
         fullUrl = location.href.split("?")[0];
       } else {
-        // 從 xgwrapper id 解析影片 ID 與作者帳號
-        const xgEl = videoEl.closest("[id^='xgwrapper-']") || article.querySelector("[id^='xgwrapper-']");
+        const xgEl = activeVideo.closest("[id^='xgwrapper-']") || article.querySelector("[id^='xgwrapper-']");
         const idMatch = xgEl?.id?.match(/(\d{15,22})$/);
         const authorHref = article.querySelector("a[href^='/@']")?.getAttribute("href")?.split("?")[0] || "/@i";
         if (idMatch) {
@@ -283,20 +395,22 @@
         }
       }
 
-      if (!fullUrl) return;
+      if (fullUrl) {
+        const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
+        const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
+        const thumbImg = article.querySelector("img[src*='tiktokcdn']");
+        const thumbUrl = activeVideo.poster || thumbImg?.getAttribute("src") || "";
+        updateSingleShortFloatingButton(activeVideo, fullUrl.split("?")[0], title, thumbUrl);
+        return;
+      }
+    }
 
-      const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
-      const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
-      const thumbImg = article.querySelector("img[src*='tiktokcdn']");
-      const thumbUrl = videoEl.poster || thumbImg?.getAttribute("src") || "";
-
-      createThumbnailButton(playerBox, fullUrl.split("?")[0], title, "", article, thumbUrl);
-    });
-
-    // 2. 個人主頁 / 搜尋頁 / 探索頁縮圖格狀卡片
+    // 2. 個人主頁 / 搜尋頁 / 探索頁縮圖格狀卡片 (無主播放影片時)
+    updateSingleShortFloatingButton(null, "", "", "");
     const gridCards = document.querySelectorAll("[data-e2e='user-post-item'], [data-e2e='search_top-item'], [data-e2e='explore-item']");
     gridCards.forEach((card) => {
       if (card.dataset.cppdInjected) return;
+      if (card.querySelector("video")) return; // 略過動態播放器以免影響播放
       const linkElem = card.querySelector("a[href*='/video/']");
       const imgElem = card.querySelector("img");
       if (!linkElem || !imgElem || imgElem.clientWidth < 80) return;
@@ -318,49 +432,41 @@
   }
 
   /**
-   * Facebook Reels / Watch 影片注入 (僅在實際影片畫面左上角掛載單一按鈕，絕不洗版)
+   * Facebook Reels / Watch 影片注入 (無侵入單一浮動按鈕，絕不洗版也不影響播放)
    */
   function injectFacebookCards() {
-    // 1. Reels 全螢幕/獨立檢視模式 (/reel/... 或 /reels/...)：僅對畫面中可見的主 <video> 掛載單一按鈕
+    // 1. Reels 獨立/滑動檢視模式 (/reel/... 或 /reels/...)：僅對畫面中心唯一的主 <video> 顯示左上角按鈕
     if (location.pathname.includes("/reel")) {
-      const videos = document.querySelectorAll("video");
-      videos.forEach((videoEl) => {
-        const rect = videoEl.getBoundingClientRect();
-        if (rect.width < 150 || rect.height < 200) return;
-        if (rect.bottom < 0 || rect.top > window.innerHeight) return;
-
-        const playerBox = videoEl.parentElement;
-        if (!playerBox || playerBox.querySelector(".cppd-thumb-btn-wrapper")) return;
-
+      const activeVideo = findVisibleCenterVideo();
+      if (activeVideo) {
         const cleanUrl = location.href.split("?")[0];
         const title = document.title && document.title !== "Facebook" ? document.title.replace(/\s*\|\s*Facebook$/, "") : "Facebook Reels";
-        const poster = videoEl.poster || "";
-
-        createThumbnailButton(playerBox, cleanUrl, title, "", playerBox, poster);
-      });
+        const poster = activeVideo.poster || "";
+        updateSingleShortFloatingButton(activeVideo, cleanUrl, title, poster);
+      } else {
+        updateSingleShortFloatingButton(null, "", "", "");
+      }
       return;
     }
 
-    // 2. Facebook 動態時報 / Watch 列表：僅在包含大型封面圖或影片的連結本體上掛載單一按鈕
+    // 2. Facebook 動態時報 / Watch 列表：僅在包含大型封面圖的連結上掛載
+    updateSingleShortFloatingButton(null, "", "", "");
     const links = document.querySelectorAll("a[href*='/reel/'], a[href*='/watch/?v=']");
     links.forEach((linkElem) => {
       const href = linkElem.getAttribute("href");
       if (!href || href.includes("comment_id=")) return;
 
-      const mediaEl = linkElem.querySelector("img, video");
-      if (!mediaEl) return;
-      const rect = mediaEl.getBoundingClientRect();
+      const imgEl = linkElem.querySelector("img");
+      if (!imgEl) return;
+      const rect = imgEl.getBoundingClientRect();
       if (rect.width < 140 || rect.height < 140) return;
 
-      const thumbContainer = mediaEl.parentElement;
+      const thumbContainer = imgEl.parentElement;
       if (!thumbContainer || thumbContainer.querySelector(".cppd-thumb-btn-wrapper")) return;
 
       const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
-      const title =
-        linkElem.getAttribute("aria-label") ||
-        mediaEl.getAttribute("alt") ||
-        "Facebook Reels";
-      const thumbUrl = mediaEl.tagName === "IMG" ? (mediaEl.getAttribute("src") || "") : (mediaEl.poster || "");
+      const title = linkElem.getAttribute("aria-label") || imgEl.getAttribute("alt") || "Facebook Reels";
+      const thumbUrl = imgEl.getAttribute("src") || "";
 
       createThumbnailButton(thumbContainer, fullUrl.split("&")[0], title, "", linkElem, thumbUrl);
     });
