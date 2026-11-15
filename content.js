@@ -66,8 +66,8 @@
 
     window.addEventListener("scroll", scheduleScan, { passive: true });
 
-    // 定時守護進程（每 1.2 秒輪詢一次，徹底解決 YouTube Polymer 延遲綁定與 SPA 導航卡片漏載問題）
-    setInterval(scanAndInjectButtons, 1200);
+    // 定時守護進程（每 600ms 輪詢一次，徹底解決 YouTube Polymer 延遲綁定與 TikTok/FB 滑動切換反應）
+    setInterval(scanAndInjectButtons, 600);
 
     // 監聽 YouTube SPA 專屬導航與頁面更新自訂事件
     window.addEventListener("yt-navigate-finish", scheduleScan);
@@ -123,13 +123,15 @@
       "ytd-rich-grid-media",
       "ytd-grid-media",
       "yt-lockup-view-model",
+      "ytm-shorts-lockup-view-model",
+      "ytm-shorts-lockup-view-model-v2",
       "a.ytp-videowall-still"
     ];
 
     const cards = document.querySelectorAll(cardSelectors.join(","));
 
     cards.forEach((card) => {
-      if (card.dataset.cppdInjected) return;
+      if (card.querySelector(".cppd-thumb-btn-wrapper")) return;
 
       // 1. 穿透搜尋影片連結：支援卡片本身就是 <a> (如片尾推薦) 或內部帶有 /watch?v= / /shorts/ 的 <a>
       let linkElem = card.matches("a[href*='/watch?v='], a[href*='/shorts/']")
@@ -202,7 +204,7 @@
     const cards = document.querySelectorAll(cardSelectors.join(","));
 
     cards.forEach((card) => {
-      if (card.dataset.cppdInjected) return;
+      if (card.querySelector(".cppd-thumb-btn-wrapper")) return;
 
       const thumbContainer = card.querySelector(".bili-video-card__image--wrap, .bili-video-card__image, .pic-box") || card;
       const linkElem = card.querySelector("a[href*='/video/BV'], a[href*='/video/av']");
@@ -271,16 +273,16 @@
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     let best = null;
-    let bestScore = -1;
+    let bestScore = -Infinity;
 
     for (const v of videos) {
       const rect = v.getBoundingClientRect();
-      if (rect.width < 150 || rect.height < 200) continue;
-      if (rect.bottom < 80 || rect.top > vh - 80 || rect.right < 80 || rect.left > vw - 80) continue;
+      if (rect.width < 120 || rect.height < 120) continue;
+      if (rect.bottom < 40 || rect.top > vh - 40 || rect.right < 40 || rect.left > vw - 40) continue;
       const style = window.getComputedStyle(v);
       if (style.display === "none" || style.visibility === "hidden" || parseFloat(style.opacity) === 0) continue;
 
-      // 計算距離螢幕中心的接近程度，正在播放的優先
+      // 計算距離螢幕中心的接近程度，正在播放的優先 (支援暫停中的影片)
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const dist = Math.hypot(cx - vw / 2, cy - vh / 2);
