@@ -91,7 +91,7 @@
    * YouTube 卡片掃描與按鈕注入
    */
   function injectYouTubeCards() {
-    // 涵蓋 YouTube 所有版面與新舊版渲染器容器
+    // 涵蓋 YouTube 所有版面與新舊版渲染器容器 (包含右側推薦欄新版 yt-lockup-view-model)
     const cardSelectors = [
       "ytd-rich-item-renderer",
       "ytd-video-renderer",
@@ -100,7 +100,9 @@
       "ytd-playlist-video-renderer",
       "ytd-reel-item-renderer",
       "ytd-rich-grid-media",
-      "ytd-grid-media"
+      "ytd-grid-media",
+      "yt-lockup-view-model",
+      "a.ytp-videowall-still"
     ];
 
     const cards = document.querySelectorAll(cardSelectors.join(","));
@@ -108,8 +110,10 @@
     cards.forEach((card) => {
       if (card.dataset.cppdInjected) return;
 
-      // 1. 穿透搜尋影片連結：優先尋找帶有 /watch?v= 或 /shorts/ 的 <a> 標籤
-      let linkElem = card.querySelector("a[href*='/watch?v='], a[href*='/shorts/']");
+      // 1. 穿透搜尋影片連結：支援卡片本身就是 <a> (如片尾推薦) 或內部帶有 /watch?v= / /shorts/ 的 <a>
+      let linkElem = card.matches("a[href*='/watch?v='], a[href*='/shorts/']")
+        ? card
+        : card.querySelector("a[href*='/watch?v='], a[href*='/shorts/']");
       if (!linkElem) {
         // 若直接選擇器未命中，廣度掃描 card 內部所有 <a> 標籤
         const allAnchors = card.querySelectorAll("a[href]");
@@ -129,25 +133,30 @@
       if (!href) return;
       const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
 
-      // 2. 搜尋影片標題與時長 (時間)
-      const titleElem = card.querySelector("#video-title, #video-title-link, .title, h3 a");
+      // 2. 搜尋影片標題與時長 (相容新版 yt-lockup-view-model 與片尾推薦)
+      const titleElem = card.querySelector(
+        "#video-title, #video-title-link, .yt-lockup-metadata-view-model__title, a.yt-lockup-metadata-view-model-wiz__title, .ytp-videowall-still-info-title, .title, h3 a, h3 span"
+      );
       let title = titleElem?.getAttribute("title") || titleElem?.textContent?.trim() || "";
       if (!title) {
         title = linkElem.getAttribute("title") || linkElem.getAttribute("aria-label") || "";
       }
 
-      // 擷取 YouTube 封面上的時長標籤 (例如 "4:57", "15:04")
+      // 擷取 YouTube 封面上的時長標籤 (相容新版 .yt-badge-shape__text 與舊版 renderer)
       const durationElem = card.querySelector(
-        "#overlays ytd-thumbnail-overlay-time-status-renderer #text, span#text.ytd-thumbnail-overlay-time-status-renderer, .badge-shape-wiz__text, ytd-thumbnail-overlay-time-status-renderer"
+        "#overlays ytd-thumbnail-overlay-time-status-renderer #text, span#text.ytd-thumbnail-overlay-time-status-renderer, .yt-badge-shape__text, .badge-shape-wiz__text, ytd-thumbnail-overlay-time-status-renderer, .ytp-videowall-still-info-duration"
       );
-      const duration = durationElem?.textContent?.trim() || "";
+      const rawDur = durationElem?.textContent?.trim() || "";
+      const duration = /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(rawDur) ? rawDur : "";
 
       // 擷取 YouTube 封面上的真實縮圖
-      const ytImg = card.querySelector("ytd-thumbnail img, #thumbnail img, img");
+      const ytImg = card.querySelector("yt-thumbnail-view-model img, ytd-thumbnail img, #thumbnail img, img");
       let thumbUrl = ytImg?.getAttribute("src") || ytImg?.currentSrc || "";
 
-      // 3. 尋找縮圖容器掛載點 (掛載於 ytd-thumbnail 頂層)
-      const thumbContainer = card.querySelector("ytd-thumbnail, a#thumbnail, #thumbnail, .ytd-thumbnail") || card;
+      // 3. 尋找縮圖容器掛載點 (優先鎖定新版 yt-thumbnail-view-model 與舊版 ytd-thumbnail)
+      const thumbContainer = card.querySelector(
+        "yt-thumbnail-view-model, a.yt-lockup-view-model__content-image, ytd-thumbnail, a#thumbnail, #thumbnail, .ytd-thumbnail"
+      ) || card;
 
       // 標記已注入，避免重複處理
       card.dataset.cppdInjected = "true";
