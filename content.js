@@ -748,20 +748,96 @@
   }
 
   /**
+   * 自動解除 TikTok / Facebook Reels 靜音並開啟音量
+   */
+  function tryUnmuteShortVideo(video) {
+    if (!video) return;
+    try {
+      if (video.muted) {
+        video.muted = false;
+      }
+      if (video.volume < 0.1) {
+        video.volume = 1.0;
+      }
+
+      // 1. Facebook Reels 解除靜音按鈕
+      if (location.hostname.includes("facebook.com")) {
+        const fbUnmuteSelectors = [
+          "[aria-label='Unmute']",
+          "[aria-label='取消靜音']",
+          "[aria-label='取消静音']",
+          "[aria-label='開啟音效']",
+          "[aria-label='Turn on sound']",
+          "div[role='button'][aria-label*='Unmute']",
+          "div[role='button'][aria-label*='取消靜音']",
+          "div[role='button'][aria-label*='取消静音']"
+        ];
+        for (const sel of fbUnmuteSelectors) {
+          const btn = document.querySelector(sel);
+          if (btn && btn.offsetParent !== null) {
+            btn.click();
+            break;
+          }
+        }
+      }
+
+      // 2. TikTok 解除靜音按鈕 (僅在目前處於靜音狀態時點擊，避免誤關聲音)
+      if (location.hostname.includes("tiktok.com")) {
+        const ttSoundBtn = document.querySelector("[data-e2e='video-sound'], button[aria-label*='Unmute'], button[aria-label*='取消靜音'], button[aria-label*='取消静音']");
+        if (ttSoundBtn) {
+          const label = (ttSoundBtn.getAttribute("aria-label") || "").toLowerCase();
+          const isCurrentlyMuted = video.muted || label.includes("unmute") || label.includes("取消靜音") || label.includes("取消静音");
+          if (isCurrentlyMuted) {
+            ttSoundBtn.click();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("tryUnmuteShortVideo error:", e);
+    }
+  }
+
+  /**
    * 綁定 video 結束事件、進度輪詢、自動開播、全螢幕與初始倍速
    */
   function bindVideoEvents(video, state) {
     const isShortPlatform = location.hostname.includes("tiktok.com") || location.hostname.includes("facebook.com");
 
-    // TikTok 與 Facebook Reels 預設為循環播放，在連播模式下須關閉循環以便觸發換下一部
+    // TikTok 與 Facebook Reels 預設為循環播放且常預設靜音：在連播模式下自動解除靜音、開啟音量並關閉循環
     if (isShortPlatform) {
       video.loop = false;
+      tryUnmuteShortVideo(video);
+
+      // 防止平台腳本在載入後數秒內又把影片設回靜音，前 3 秒守護解除靜音
+      let unmuteChecks = 0;
+      const unmuteGuard = setInterval(() => {
+        unmuteChecks++;
+        if (video.muted || video.volume < 0.1) {
+          tryUnmuteShortVideo(video);
+        }
+        if (unmuteChecks >= 6) {
+          clearInterval(unmuteGuard);
+        }
+      }, 500);
     }
 
     setTimeout(() => {
       if (video.paused && !isAdPlaying()) {
         video.play().catch(() => {
-          console.log("[稍後觀看播放器] 等待使用者交互以啟動視訊播放");
+          // 若瀏覽器阻擋有聲自動播放，先靜音開播並在首次互動後立刻開啟聲音
+          video.muted = true;
+          video.play().catch(() => {
+            console.log("[稍後觀看播放器] 等待使用者交互以啟動視訊播放");
+          });
+          if (isShortPlatform) {
+            const unmuteOnInteract = () => {
+              tryUnmuteShortVideo(video);
+              window.removeEventListener("click", unmuteOnInteract);
+              window.removeEventListener("keydown", unmuteOnInteract);
+            };
+            window.addEventListener("click", unmuteOnInteract, { once: true });
+            window.addEventListener("keydown", unmuteOnInteract, { once: true });
+          }
         });
       }
 
