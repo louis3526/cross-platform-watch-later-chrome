@@ -789,6 +789,53 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /**
+   * 拖曳至清單頂部/底部邊緣時自動平滑捲動 (適用小視窗與放大全螢幕分頁)
+   */
+  const playlistSectionEl = document.querySelector(".playlist-section");
+  let dragAutoScrollSpeed = 0;
+  let dragAutoScrollRaf = null;
+
+  function runDragAutoScroll() {
+    if (draggedItemIndex === null || dragAutoScrollSpeed === 0 || !playlistSectionEl) {
+      dragAutoScrollRaf = null;
+      return;
+    }
+    playlistSectionEl.scrollTop += dragAutoScrollSpeed;
+    dragAutoScrollRaf = requestAnimationFrame(runDragAutoScroll);
+  }
+
+  function stopDragAutoScroll() {
+    dragAutoScrollSpeed = 0;
+    if (dragAutoScrollRaf) {
+      cancelAnimationFrame(dragAutoScrollRaf);
+      dragAutoScrollRaf = null;
+    }
+  }
+
+  document.addEventListener("dragover", (e) => {
+    if (draggedItemIndex === null || !playlistSectionEl) return;
+    e.preventDefault();
+
+    const rect = playlistSectionEl.getBoundingClientRect();
+    const edgeThreshold = 68;
+
+    if (e.clientY <= rect.top + edgeThreshold) {
+      const ratio = Math.min(1, Math.max(0.15, (rect.top + edgeThreshold - e.clientY) / edgeThreshold));
+      dragAutoScrollSpeed = -Math.round(ratio * 16 + 3);
+      if (!dragAutoScrollRaf) dragAutoScrollRaf = requestAnimationFrame(runDragAutoScroll);
+    } else if (e.clientY >= rect.bottom - edgeThreshold) {
+      const ratio = Math.min(1, Math.max(0.15, (e.clientY - (rect.bottom - edgeThreshold)) / edgeThreshold));
+      dragAutoScrollSpeed = Math.round(ratio * 16 + 3);
+      if (!dragAutoScrollRaf) dragAutoScrollRaf = requestAnimationFrame(runDragAutoScroll);
+    } else {
+      stopDragAutoScroll();
+    }
+  });
+
+  document.addEventListener("drop", stopDragAutoScroll);
+  document.addEventListener("dragend", stopDragAutoScroll);
+
+  /**
    * HTML5 滑鼠左鍵拖曳換位機制
    */
   function bindDragAndDropEvents(li, index) {
