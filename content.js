@@ -225,9 +225,15 @@
     const wrapper = document.createElement("div");
     wrapper.className = "cppd-thumb-btn-wrapper";
 
+    function setBtnLabel(el, icon, text) {
+      const sp = document.createElement("span");
+      sp.textContent = icon;
+      el.replaceChildren(sp, document.createTextNode(" " + text));
+    }
+
     const btn = document.createElement("button");
     btn.className = "cppd-thumb-add-btn";
-    btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+    setBtnLabel(btn, "➕", ci18n("btnWatchLater"));
     btn.title = ci18n("btnWatchLaterTitle");
 
     // 徹底防穿透：在 btn 上精確阻斷所有會觸發 YouTube/B 站底層跳轉的指針與滑鼠事件冒泡
@@ -246,7 +252,7 @@
       if (btn.classList.contains("cppd-added")) return;
 
       btn.classList.add("cppd-added");
-      btn.innerHTML = `<span>✓</span> ${ci18n("btnWatchLaterAdded")}`;
+      setBtnLabel(btn, "✓", ci18n("btnWatchLaterAdded"));
       btn.title = ci18n("btnWatchLaterInList");
 
       // 點擊當下動態複查最新時長 (必須包含時間冒號格式，嚴格排除純數字如 557)
@@ -282,7 +288,7 @@
             if (chrome.runtime.lastError) {
               console.warn("sendMessage error:", chrome.runtime.lastError);
               btn.classList.remove("cppd-added");
-              btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+              setBtnLabel(btn, "➕", ci18n("btnWatchLater"));
               showToast(ci18n("toastNeedReload"));
               return;
             }
@@ -292,7 +298,7 @@
         );
       } catch (err) {
         btn.classList.remove("cppd-added");
-        btn.innerHTML = `<span>➕</span> ${ci18n("btnWatchLater")}`;
+        setBtnLabel(btn, "➕", ci18n("btnWatchLater"));
         showToast(ci18n("toastNeedReload"));
       }
     });
@@ -313,7 +319,12 @@
       document.body.appendChild(toast);
     }
 
-    toast.innerHTML = `<span class="cppd-toast-icon">✓</span> <span>${escapeHtml(message)}</span>`;
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "cppd-toast-icon";
+    iconSpan.textContent = "✓";
+    const msgSpan = document.createElement("span");
+    msgSpan.textContent = message;
+    toast.replaceChildren(iconSpan, document.createTextNode(" "), msgSpan);
     toast.classList.add("show");
 
     if (toastTimeout) clearTimeout(toastTimeout);
@@ -345,24 +356,55 @@
     const currentNum = (state.currentIndex || 0) + 1;
     const totalNum = state.total || 1;
 
-    dockElement.innerHTML = `
-      <div class="cppd-container" id="cppd-main-box">
-        <div class="cppd-badge" id="cppd-toggle-min" title="${ci18n("dockToggleTitle")}">
-          <span class="cppd-pulse-dot"></span>
-          <span>${currentNum} / ${totalNum}</span>
-        </div>
-        <div class="cppd-info" id="cppd-info-box">
-          <div class="cppd-title" title="${escapeHtml(currentTitle)}">${escapeHtml(currentTitle)}</div>
-          <div class="cppd-next" title="${escapeHtml(nextTitle)}">${escapeHtml(nextTitle)}</div>
-        </div>
-        <div class="cppd-actions" id="cppd-actions-box">
-          <button class="cppd-btn" id="cppd-btn-prev" title="${ci18n("dockPrevTitle")}">⏮</button>
-          <button class="cppd-btn" id="cppd-btn-next" title="${ci18n("dockNextTitle")}">⏭</button>
-          <button class="cppd-btn" id="cppd-btn-fs" title="${ci18n("dockFsTitle")}">⛶</button>
-          <button class="cppd-btn cppd-btn-stop" id="cppd-btn-stop" title="${ci18n("dockStopTitle")}">⏹</button>
-        </div>
-      </div>
-    `;
+    const mainBox = document.createElement("div");
+    mainBox.className = "cppd-container";
+    mainBox.id = "cppd-main-box";
+
+    const badge = document.createElement("div");
+    badge.className = "cppd-badge";
+    badge.id = "cppd-toggle-min";
+    badge.title = ci18n("dockToggleTitle");
+    const pulseDot = document.createElement("span");
+    pulseDot.className = "cppd-pulse-dot";
+    const countSpan = document.createElement("span");
+    countSpan.textContent = `${currentNum} / ${totalNum}`;
+    badge.append(pulseDot, countSpan);
+
+    const infoBox = document.createElement("div");
+    infoBox.className = "cppd-info";
+    infoBox.id = "cppd-info-box";
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "cppd-title";
+    titleDiv.title = currentTitle;
+    titleDiv.textContent = currentTitle;
+    const nextDiv = document.createElement("div");
+    nextDiv.className = "cppd-next";
+    nextDiv.title = nextTitle;
+    nextDiv.textContent = nextTitle;
+    infoBox.append(titleDiv, nextDiv);
+
+    const actionsBox = document.createElement("div");
+    actionsBox.className = "cppd-actions";
+    actionsBox.id = "cppd-actions-box";
+
+    const makeDockBtn = (id, className, title, text) => {
+      const b = document.createElement("button");
+      b.className = className;
+      b.id = id;
+      b.title = title;
+      b.textContent = text;
+      return b;
+    };
+
+    actionsBox.append(
+      makeDockBtn("cppd-btn-prev", "cppd-btn", ci18n("dockPrevTitle"), "⏮"),
+      makeDockBtn("cppd-btn-next", "cppd-btn", ci18n("dockNextTitle"), "⏭"),
+      makeDockBtn("cppd-btn-fs", "cppd-btn", ci18n("dockFsTitle"), "⛶"),
+      makeDockBtn("cppd-btn-stop", "cppd-btn cppd-btn-stop", ci18n("dockStopTitle"), "⏹")
+    );
+
+    mainBox.append(badge, infoBox, actionsBox);
+    dockElement.appendChild(mainBox);
 
     document.body.appendChild(dockElement);
 

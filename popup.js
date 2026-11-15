@@ -154,15 +154,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selectAllSpan) selectAllSpan.textContent = t("selectAll");
     if (btnCancelSelect) btnCancelSelect.textContent = t("btnCancelSelect");
 
+    function setSafeLines(el, str) {
+      if (!el) return;
+      const plain = str.replace(/<\/?b>/g, "");
+      const parts = plain.split(/<br\s*\/?>/i);
+      el.replaceChildren();
+      parts.forEach((part, idx) => {
+        if (idx > 0) el.appendChild(document.createElement("br"));
+        el.appendChild(document.createTextNode(part));
+      });
+    }
+
     // 空白狀態
     const emptyTitleElem = document.querySelector(".empty-title");
     if (emptyTitleElem) emptyTitleElem.textContent = t("emptyTitle");
     const emptyDescElem = document.querySelector(".empty-desc");
-    if (emptyDescElem) emptyDescElem.innerHTML = t("emptyDesc");
+    setSafeLines(emptyDescElem, t("emptyDesc"));
 
     // 底部提示
     const footerSpan = document.querySelector(".app-footer span");
-    if (footerSpan) footerSpan.innerHTML = t("footerTip");
+    if (footerSpan) footerSpan.textContent = t("footerTip");
 
     // 雲端彈窗
     const cloudH3 = document.querySelector("#modal-cloud-sync h3");
@@ -182,7 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCloseC = document.getElementById("btn-close-cloud-modal");
     if (btnCloseC) btnCloseC.textContent = t("btnClose");
     const cloudTipsBox = document.querySelector("#modal-cloud-sync div:last-child");
-    if (cloudTipsBox) cloudTipsBox.innerHTML = t("cloudTips");
+    setSafeLines(cloudTipsBox, t("cloudTips"));
 
     // 備份彈窗
     const backupH3 = document.querySelector("#modal-backup h3");
@@ -277,11 +288,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateOpenTabButton() {
     if (!btnOpenTab) return;
     if (isTabMode()) {
-      btnOpenTab.innerHTML = t("closeFullTab");
+      btnOpenTab.textContent = t("closeFullTab");
       btnOpenTab.title = t("closeFullTabTitle");
       btnOpenTab.className = "btn btn-danger btn-sm";
     } else {
-      btnOpenTab.innerHTML = t("openFullTab");
+      btnOpenTab.textContent = t("openFullTab");
       btnOpenTab.title = t("openFullTabTitle");
       btnOpenTab.className = "btn btn-secondary btn-sm";
     }
@@ -443,7 +454,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // 控制播放按鈕
     if (currentPlayState.isPlaying && currentPlaylist.length > 0) {
       btnStopPlay.style.display = "inline-flex";
-      btnStopPlay.innerHTML = `<span class="icon">⏹</span> ${t("btnStopPlay")}`;
+      const stopIcon = document.createElement("span");
+      stopIcon.className = "icon";
+      stopIcon.textContent = "⏹";
+      btnStopPlay.replaceChildren(stopIcon, document.createTextNode(" " + t("btnStopPlay")));
       playBtnText.textContent = `${t("btnPlayAll")} (${currentPlayState.currentIndex + 1}/${currentPlaylist.length})`;
       btnPlayAll.classList.replace("btn-success", "btn-secondary");
     } else {
@@ -454,12 +468,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (currentPlaylist.length === 0) {
       emptyState.style.display = "block";
-      playlistUl.innerHTML = "";
+      playlistUl.replaceChildren();
       return;
     }
 
     emptyState.style.display = "none";
-    playlistUl.innerHTML = "";
+    playlistUl.replaceChildren();
 
     currentPlaylist.forEach((item, index) => {
       const isCurrentPlaying = currentPlayState.isPlaying && currentPlayState.currentIndex === index;
@@ -485,42 +499,101 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      const durationMetaHtml = cleanDuration
-        ? `<span class="item-duration-tag">${t("durationLabel")} <b>${escapeHtml(cleanDuration)}</b></span><span class="meta-dot">•</span>`
-        : "";
+      if (isSelectionMode) {
+        const chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.className = "item-checkbox";
+        chk.dataset.id = item.id;
+        chk.checked = selectedIds.has(item.id);
+        li.appendChild(chk);
+      } else {
+        const handle = document.createElement("div");
+        handle.className = "item-drag-handle";
+        handle.title = t("dragHandleTitle");
+        handle.textContent = "⋮⋮";
+        li.appendChild(handle);
+      }
 
-      const checkboxHtml = isSelectionMode
-        ? `<input type="checkbox" class="item-checkbox" data-id="${item.id}" ${selectedIds.has(item.id) ? "checked" : ""}>`
-        : "";
+      const indexDiv = document.createElement("div");
+      indexDiv.className = "item-index";
+      indexDiv.textContent = String(index + 1);
 
-      const dragHandleHtml = !isSelectionMode
-        ? `<div class="item-drag-handle" title="${t("dragHandleTitle")}">⋮⋮</div>`
-        : "";
+      const thumbBoxDiv = document.createElement("div");
+      thumbBoxDiv.className = "item-thumb-box";
+      thumbBoxDiv.title = t("thumbDblClickTitle");
+      const thumbImgEl = document.createElement("img");
+      thumbImgEl.src = item.thumbnail;
+      thumbImgEl.referrerPolicy = "no-referrer";
+      thumbImgEl.alt = "thumb";
+      const platformBadgeSpan = document.createElement("span");
+      platformBadgeSpan.className = `item-platform-badge ${platformBadgeClass}`;
+      platformBadgeSpan.textContent = platformLabel;
+      const playOverlayDiv = document.createElement("div");
+      playOverlayDiv.className = "thumb-play-overlay";
+      playOverlayDiv.title = t("thumbPlayOverlayTitle");
+      playOverlayDiv.textContent = "▶";
+      thumbBoxDiv.append(thumbImgEl, platformBadgeSpan, playOverlayDiv);
 
-      li.innerHTML = `
-        ${checkboxHtml}
-        ${dragHandleHtml}
-        <div class="item-index">${index + 1}</div>
-        <div class="item-thumb-box" title="${t("thumbDblClickTitle")}">
-          <img src="${item.thumbnail}" referrerpolicy="no-referrer" alt="thumb">
-          <span class="item-platform-badge ${platformBadgeClass}">${platformLabel}</span>
-          <div class="thumb-play-overlay" title="${t("thumbPlayOverlayTitle")}">▶</div>
-        </div>
-        <div class="item-info">
-          <a href="${item.url}" target="_blank" class="item-title" title="${escapeHtml(item.title)}">
-            ${isCurrentPlaying ? "▶ " : ""}${escapeHtml(item.title)}
-          </a>
-          <div class="item-meta">
-            ${durationMetaHtml}
-            <span>${t("addedLabel")} ${formattedDate}</span>
-          </div>
-        </div>
-        <div class="item-actions">
-          <button class="btn-icon btn-action-top" data-index="${index}" title="${t("moveTopTitle")}" ${index === 0 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤒</button>
-          <button class="btn-icon delete btn-remove" data-index="${index}" title="${t("deleteItemTitle")}">✕</button>
-          <button class="btn-icon btn-action-bottom" data-index="${index}" title="${t("moveBottomTitle")}" ${index === currentPlaylist.length - 1 ? "disabled style='opacity:0.25;cursor:default;'" : ""}>⤓</button>
-        </div>
-      `;
+      const infoDiv = document.createElement("div");
+      infoDiv.className = "item-info";
+      const titleLink = document.createElement("a");
+      titleLink.href = item.url;
+      titleLink.target = "_blank";
+      titleLink.className = "item-title";
+      titleLink.title = item.title || "";
+      titleLink.textContent = `${isCurrentPlaying ? "▶ " : ""}${item.title || ""}`;
+
+      const metaDiv = document.createElement("div");
+      metaDiv.className = "item-meta";
+      if (cleanDuration) {
+        const durTag = document.createElement("span");
+        durTag.className = "item-duration-tag";
+        const durBold = document.createElement("b");
+        durBold.textContent = cleanDuration;
+        durTag.append(document.createTextNode(`${t("durationLabel")} `), durBold);
+        const dotSpan = document.createElement("span");
+        dotSpan.className = "meta-dot";
+        dotSpan.textContent = "•";
+        metaDiv.append(durTag, dotSpan);
+      }
+      const addedSpan = document.createElement("span");
+      addedSpan.textContent = `${t("addedLabel")} ${formattedDate}`;
+      metaDiv.appendChild(addedSpan);
+      infoDiv.append(titleLink, metaDiv);
+
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "item-actions";
+
+      const btnTop = document.createElement("button");
+      btnTop.className = "btn-icon btn-action-top";
+      btnTop.dataset.index = String(index);
+      btnTop.title = t("moveTopTitle");
+      btnTop.textContent = "⤒";
+      if (index === 0) {
+        btnTop.disabled = true;
+        btnTop.style.opacity = "0.25";
+        btnTop.style.cursor = "default";
+      }
+
+      const btnDel = document.createElement("button");
+      btnDel.className = "btn-icon delete btn-remove";
+      btnDel.dataset.index = String(index);
+      btnDel.title = t("deleteItemTitle");
+      btnDel.textContent = "✕";
+
+      const btnBottom = document.createElement("button");
+      btnBottom.className = "btn-icon btn-action-bottom";
+      btnBottom.dataset.index = String(index);
+      btnBottom.title = t("moveBottomTitle");
+      btnBottom.textContent = "⤓";
+      if (index === currentPlaylist.length - 1) {
+        btnBottom.disabled = true;
+        btnBottom.style.opacity = "0.25";
+        btnBottom.style.cursor = "default";
+      }
+
+      actionsDiv.append(btnTop, btnDel, btnBottom);
+      li.append(indexDiv, thumbBoxDiv, infoDiv, actionsDiv);
 
       // 前端即時自動校正 B 站缺失或異常時長 (若包含純數字如 557 或缺失時長，直連官方 pagelist API 秒速補齊)
       const isBogusDur = !cleanDuration || cleanDuration === "00:01" || cleanDuration === "00:29" || !item.duration || !item.duration.includes(":") || /^\d+$/.test(item.duration.trim());
@@ -547,7 +620,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (metaBox && !metaBox.querySelector(".item-duration-tag")) {
                   const tag = document.createElement("span");
                   tag.className = "item-duration-tag";
-                  tag.innerHTML = `⏱️ 片長: <b>${escapeHtml(realDur)}</b>`;
+                  const bEl = document.createElement("b");
+                  bEl.textContent = realDur;
+                  tag.append(document.createTextNode(`${t("durationLabel")} `), bEl);
                   const dot = document.createElement("span");
                   dot.className = "meta-dot";
                   dot.textContent = "•";
@@ -603,7 +678,9 @@ document.addEventListener("DOMContentLoaded", () => {
               if (metaBox && !metaBox.querySelector(".item-duration-tag")) {
                 const tag = document.createElement("span");
                 tag.className = "item-duration-tag";
-                tag.innerHTML = `⏱️ 片長: <b>${escapeHtml(realDur)}</b>`;
+                const bEl = document.createElement("b");
+                bEl.textContent = realDur;
+                tag.append(document.createTextNode(`${t("durationLabel")} `), bEl);
                 const dot = document.createElement("span");
                 dot.className = "meta-dot";
                 dot.textContent = "•";
@@ -1073,9 +1150,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (type === "success") color = "#34d399";
     if (type === "error") color = "#f87171";
 
-    statusBar.innerHTML = `<span style="color:${color}; font-weight:600;">${escapeHtml(msg)}</span>`;
+    const msgSpan = document.createElement("span");
+    msgSpan.style.color = color;
+    msgSpan.style.fontWeight = "600";
+    msgSpan.textContent = msg;
+    statusBar.replaceChildren(msgSpan);
+
     setTimeout(() => {
-      statusBar.innerHTML = `<span>💡 按住滑鼠左鍵可直接拖曳上下排列順序</span>`;
+      const tipSpan = document.createElement("span");
+      tipSpan.textContent = t("footerTip");
+      statusBar.replaceChildren(tipSpan);
     }, 4000);
   }
 
