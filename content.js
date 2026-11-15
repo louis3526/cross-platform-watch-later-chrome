@@ -112,7 +112,27 @@
    * YouTube 卡片掃描與按鈕注入
    */
   function injectYouTubeCards() {
-    // 涵蓋 YouTube 所有版面與新舊版渲染器容器 (包含右側推薦欄新版 yt-lockup-view-model)
+    // 0. YouTube Shorts 專屬滑動播放頁 (/shorts/...)：使用單一無侵入浮動按鈕貼齊目前播放影片左上角
+    if (location.pathname.includes("/shorts/")) {
+      const activeVideo = findVisibleCenterVideo();
+      const shortsMatch = location.pathname.match(/\/shorts\/([^/?#]+)/);
+      if (activeVideo && shortsMatch) {
+        const vid = shortsMatch[1];
+        const fullUrl = `https://www.youtube.com/shorts/${vid}`;
+        const titleEl = document.querySelector(
+          "ytd-reel-video-renderer[is-active] h2, ytd-reel-video-renderer[is-active] .title, yt-shorts-video-title-view-model h2, ytd-reel-player-header-renderer .title"
+        );
+        const title = titleEl?.textContent?.trim() || document.title.replace(/ - YouTube$/, "") || `YouTube Shorts (${vid})`;
+        const thumbUrl = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+        updateSingleShortFloatingButton(activeVideo, fullUrl, title, thumbUrl);
+      } else {
+        updateSingleShortFloatingButton(null, "", "", "");
+      }
+    } else {
+      updateSingleShortFloatingButton(null, "", "", "");
+    }
+
+    // 涵蓋 YouTube 所有版面與新舊版渲染器容器 (包含右側推薦欄新版 yt-lockup-view-model 與 Shorts 卡片)
     const cardSelectors = [
       "ytd-rich-item-renderer",
       "ytd-video-renderer",
@@ -176,9 +196,9 @@
       const ytImg = card.querySelector("yt-thumbnail-view-model img, ytd-thumbnail img, #thumbnail img, img");
       let thumbUrl = ytImg?.getAttribute("src") || ytImg?.currentSrc || "";
 
-      // 3. 尋找縮圖容器掛載點 (優先鎖定新版 yt-thumbnail-view-model 與舊版 ytd-thumbnail)
+      // 3. 尋找縮圖容器掛載點 (優先鎖定新版 yt-thumbnail-view-model、Shorts 縮圖容器與舊版 ytd-thumbnail)
       const thumbContainer = card.querySelector(
-        "yt-thumbnail-view-model, a.yt-lockup-view-model__content-image, ytd-thumbnail, a#thumbnail, #thumbnail, .ytd-thumbnail"
+        ".shortsLockupViewModelHostThumbnailContainer, .ytm-shorts-lockup-view-model-wiz__thumbnail-container, yt-thumbnail-view-model, a.yt-lockup-view-model__content-image, ytd-thumbnail, a#thumbnail, #thumbnail, .ytd-thumbnail"
       ) || card;
 
       // 標記已注入，避免重複處理
@@ -1013,7 +1033,10 @@
    * 綁定 video 結束事件、進度輪詢、自動開播、全螢幕與初始倍速
    */
   function bindVideoEvents(video, state) {
-    const isShortPlatform = location.hostname.includes("tiktok.com") || location.hostname.includes("facebook.com");
+    const isShortPlatform =
+      location.hostname.includes("tiktok.com") ||
+      location.hostname.includes("facebook.com") ||
+      location.pathname.includes("/shorts/");
 
     // TikTok 與 Facebook Reels 預設為循環播放且常預設靜音：在連播模式下自動解除靜音、開啟音量並關閉循環
     if (isShortPlatform) {
