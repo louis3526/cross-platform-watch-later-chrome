@@ -151,6 +151,13 @@
   display: block !important;
 }
 
+/* TikTok / FB Reels 專用獨立浮動按鈕容器 (不鎖死 top/left，完全由 JS 動態跟隨影片左上角) */
+#cppd-short-floating-wrapper {
+  position: fixed;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
 .cppd-thumb-add-btn {
   display: inline-flex !important;
   align-items: center !important;

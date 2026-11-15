@@ -886,23 +886,38 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 8. 一鍵加入目前瀏覽中的分頁
+  // 8. 一鍵加入目前瀏覽中的分頁 (對 TikTok / FB Reels 會先向網頁詢問目前正在播放的實際影片網址與縮圖)
   btnAddCurrent.addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (!activeTab || !activeTab.url) return;
 
-      setStatus("正在收納當前分頁影片...", "info");
-      chrome.runtime.sendMessage(
-        { action: "PARSE_AND_ADD", url: activeTab.url, title: activeTab.title },
-        (res) => {
-          if (res && res.success) {
-            setStatus(`已收納當前影片: ${res.item.title}`, "success");
-          } else {
-            setStatus("目前分頁非 YouTube 或 Bilibili 影片頁面", "error");
+      setStatus(t("statusAddCurrent"), "info");
+
+      const sendAdd = (url, title, thumbnail = "") => {
+        chrome.runtime.sendMessage(
+          { action: "PARSE_AND_ADD", url, title, thumbnail },
+          (res) => {
+            if (res && res.success) {
+              setStatus(t("statusCurrentAdded", { title: res.item.title }), "success");
+            } else {
+              setStatus(t("statusNotVideoPage"), "error");
+            }
           }
-        }
-      );
+        );
+      };
+
+      if (activeTab.url.includes("tiktok.com") || activeTab.url.includes("facebook.com")) {
+        chrome.tabs.sendMessage(activeTab.id, { action: "GET_ACTIVE_SHORT_INFO" }, (info) => {
+          if (!chrome.runtime.lastError && info && info.url) {
+            sendAdd(info.url, info.title || activeTab.title, info.thumbnail || "");
+          } else {
+            sendAdd(activeTab.url, activeTab.title, "");
+          }
+        });
+      } else {
+        sendAdd(activeTab.url, activeTab.title, "");
+      }
     });
   });
 

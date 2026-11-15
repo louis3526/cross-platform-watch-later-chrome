@@ -21,6 +21,20 @@
     return typeof getTranslation === "function" ? getTranslation(activeLang, key, params) : key;
   }
 
+  // 回應 Popup「加入當前分頁」詢問目前畫面正在播放的短片資訊
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg?.action === "GET_ACTIVE_SHORT_INFO") {
+      const st = singleShortBtnState;
+      const thumb = st.thumb || captureVideoFrame(st.videoEl);
+      sendResponse({
+        url: st.url || location.href.split("?")[0],
+        title: st.title || document.title,
+        thumbnail: thumb || ""
+      });
+      return true;
+    }
+  });
+
   // 1. 全域初始化：在所有影片卡片上注入「封面浮動按鈕」
   initCardThumbnailButtons();
 
@@ -293,9 +307,6 @@
     if (!wrapper) {
       wrapper = document.createElement("div");
       wrapper.id = "cppd-short-floating-wrapper";
-      wrapper.className = "cppd-thumb-btn-wrapper";
-      wrapper.style.position = "fixed";
-      wrapper.style.zIndex = "2147483647";
 
       const btn = document.createElement("button");
       btn.id = "cppd-short-floating-btn";
@@ -315,12 +326,6 @@
         e.stopPropagation();
         if (btn.classList.contains("cppd-added")) return;
 
-        btn.classList.add("cppd-added");
-        const spOk = document.createElement("span");
-        spOk.textContent = "✓";
-        btn.replaceChildren(spOk, document.createTextNode(" " + ci18n("btnWatchLaterAdded")));
-        btn.title = ci18n("btnWatchLaterInList");
-
         const st = singleShortBtnState;
         const thumb = st.thumb || captureVideoFrame(st.videoEl);
 
@@ -328,14 +333,19 @@
           chrome.runtime.sendMessage(
             { action: "PARSE_AND_ADD", url: st.url, title: st.title, duration: "", thumbnail: thumb },
             (res) => {
-              if (chrome.runtime.lastError) {
+              if (chrome.runtime.lastError || !res || !res.success) {
                 btn.classList.remove("cppd-added");
                 const spRetry = document.createElement("span");
                 spRetry.textContent = "➕";
                 btn.replaceChildren(spRetry, document.createTextNode(" " + ci18n("btnWatchLater")));
-                showToast(ci18n("toastNeedReload"));
+                showToast(chrome.runtime.lastError ? ci18n("toastNeedReload") : (res?.error || "加入失敗"));
                 return;
               }
+              btn.classList.add("cppd-added");
+              const spOk = document.createElement("span");
+              spOk.textContent = "✓";
+              btn.replaceChildren(spOk, document.createTextNode(" " + ci18n("btnWatchLaterAdded")));
+              btn.title = ci18n("btnWatchLaterInList");
               const finalTitle = res?.item?.title || st.title || "Video";
               showToast(ci18n("toastAdded", { title: finalTitle }));
             }
@@ -423,8 +433,18 @@
 
       const titleEl = article.querySelector("[data-e2e='video-desc'], [data-e2e='browse-video-desc'], [data-e2e='search-card-desc']");
       const title = titleEl?.textContent?.trim() || document.title.replace(/\s*\|\s*TikTok$/, "") || "TikTok 影片";
-      const thumbImg = article.querySelector("img[src*='tiktokcdn']");
-      const thumbUrl = activeVideo.poster || thumbImg?.getAttribute("src") || "";
+
+      // 優先尋找非頭像的大型封面圖，若無則讀取 video.poster
+      let thumbUrl = activeVideo.poster || "";
+      if (!thumbUrl) {
+        const imgs = article.querySelectorAll("img");
+        for (const im of imgs) {
+          if (im.clientWidth >= 100 && im.clientHeight >= 100 && im.src && !im.src.startsWith("data:")) {
+            thumbUrl = im.src;
+            break;
+          }
+        }
+      }
       updateSingleShortFloatingButton(activeVideo, fullUrl.split("?")[0], title, thumbUrl);
       return;
     }
