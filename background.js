@@ -857,50 +857,45 @@ async function backfillMissingDurations() {
 }
 
 /* ==========================================================================
-   YouTube 原生播放清單管理 API (InnerTube 官方架構，截圖 44 支援)
+   YouTube 原生播放清單管理 API (同源執行引擎，截圖 44 支援，完全避開 403 阻擋)
    ========================================================================== */
 
-// 計算 YouTube SAPISIDHASH 認證標頭
-async function getYouTubeAuthHeader() {
-  return new Promise((resolve) => {
-    chrome.cookies.get({ url: "https://www.youtube.com", name: "SAPISID" }, async (c1) => {
-      let sapisid = c1?.value;
-      if (!sapisid) {
-        chrome.cookies.get({ url: "https://www.youtube.com", name: "__Secure-3PAPISID" }, async (c2) => {
-          sapisid = c2?.value;
-          if (!sapisid) return resolve(null);
-          resolve(await computeSapisidHash(sapisid));
-        });
-      } else {
-        resolve(await computeSapisidHash(sapisid));
-      }
-    });
-  });
-}
-
-async function computeSapisidHash(sapisid) {
-  const time = Math.floor(Date.now() / 1000);
-  const msg = `${time} ${sapisid} https://www.youtube.com`;
-  const buffer = new TextEncoder().encode(msg);
-  const hashBuffer = await crypto.subtle.digest("SHA-1", buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `SAPISIDHASH ${time}_${hashHex}`;
-}
-
-// 取得使用者的 YouTube 播放清單 (直接連線 InnerTube 官方端點)
-async function fetchYouTubePlaylists(videoId) {
+// 在 YouTube 分頁 context 中執行的取得播放清單函式 (100% 同源 Origin: https://www.youtube.com 與自動帶登入 Cookie)
+async function inPageGetYouTubePlaylists(videoId) {
   try {
-    const authHeader = await getYouTubeAuthHeader();
-    if (!authHeader) {
+    const getCookie = (name) => {
+      const match = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+      return match ? match[1] : null;
+    };
+
+    const sapisid = getCookie("SAPISID") || getCookie("__Secure-3PAPISID") || getCookie("__Secure-1PAPISID");
+    if (!sapisid) {
       return { success: false, needLogin: true, error: "尚未在瀏覽器中登入 YouTube 帳號" };
     }
+
+    const time = Math.floor(Date.now() / 1000);
+    const msg = `${time} ${sapisid} https://www.youtube.com`;
+    const buffer = new TextEncoder().encode(msg);
+    const hashBuffer = await crypto.subtle.digest("SHA-1", buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    const authHeader = `SAPISIDHASH ${time}_${hashHex}`;
+
+    let apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+    let clientVersion = "2.20261112.10.00";
+    try {
+      if (window.ytcfg && typeof window.ytcfg.get === "function") {
+        apiKey = window.ytcfg.get("INNERTUBE_API_KEY") || apiKey;
+        const ctx = window.ytcfg.get("INNERTUBE_CONTEXT");
+        if (ctx?.client?.clientVersion) clientVersion = ctx.client.clientVersion;
+      }
+    } catch (e) {}
 
     const payload = {
       context: {
         client: {
           clientName: "WEB",
-          clientVersion: "2.20261112.10.00",
+          clientVersion: clientVersion,
           hl: "zh-TW",
           gl: "TW"
         }
@@ -908,30 +903,27 @@ async function fetchYouTubePlaylists(videoId) {
       videoIds: [videoId]
     };
 
-    const res = await fetch("https://www.youtube.com/youtubei/v1/playlist/get_add_to_playlist?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8", {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/playlist/get_add_to_playlist?key=${apiKey}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": authHeader,
-        "X-Origin": "https://www.youtube.com",
         "X-YouTube-Client-Name": "1",
-        "X-YouTube-Client-Version": "2.20261112.10.00"
+        "X-YouTube-Client-Version": clientVersion
       },
       body: JSON.stringify(payload),
       credentials: "include"
     });
 
     if (res.status === 401 || res.status === 403) {
-      return { success: false, needLogin: true, error: "登入憑證已過期，請重新整理 YouTube 頁面" };
+      return { success: false, needLogin: true, error: "登入憑證已失效，請在 YouTube 重新登入" };
     }
 
     const json = await res.json();
     const playlists = [];
 
-    // 遍歷所有層級找到 addToPlaylistRenderer / playlistAddToOptionRenderer
     const traverse = (node) => {
       if (!node || typeof node !== "object") return;
-
       if (node.playlistId && (node.title || node.containsSelectedVideos !== undefined)) {
         let title = "";
         if (typeof node.title === "string") title = node.title;
@@ -951,7 +943,6 @@ async function fetchYouTubePlaylists(videoId) {
           thumb = node.thumbnails[0].url;
         }
 
-        // 避免重複加入
         if (!playlists.some((p) => p.playlistId === pId)) {
           playlists.push({
             playlistId: pId,
@@ -963,7 +954,6 @@ async function fetchYouTubePlaylists(videoId) {
         }
         return;
       }
-
       for (const k of Object.keys(node)) {
         traverse(node[k]);
       }
@@ -971,7 +961,6 @@ async function fetchYouTubePlaylists(videoId) {
 
     traverse(json);
 
-    // 確保「稍後觀看 (Watch later)」存在：若列表中未見，置頂補上預設的 WL
     if (!playlists.some((p) => p.playlistId === "WL")) {
       playlists.unshift({
         playlistId: "WL",
@@ -984,24 +973,46 @@ async function fetchYouTubePlaylists(videoId) {
 
     return { success: true, playlists };
   } catch (err) {
-    console.error("fetchYouTubePlaylists error:", err);
-    return { success: false, error: err.message || "取得 YouTube 清單失敗" };
+    return { success: false, error: err.message || "取得清單發生例外" };
   }
 }
 
-// 將影片加入或移除指定 YouTube 播放清單
-async function toggleYouTubePlaylist(videoId, playlistId, add) {
+// 在 YouTube 分頁 context 中執行的加入/移出播放清單函式
+async function inPageToggleYouTubePlaylist(videoId, playlistId, add) {
   try {
-    const authHeader = await getYouTubeAuthHeader();
-    if (!authHeader) {
-      return { success: false, needLogin: true, error: "尚未在瀏覽器中登入 YouTube 帳號" };
+    const getCookie = (name) => {
+      const match = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+      return match ? match[1] : null;
+    };
+
+    const sapisid = getCookie("SAPISID") || getCookie("__Secure-3PAPISID") || getCookie("__Secure-1PAPISID");
+    if (!sapisid) {
+      return { success: false, needLogin: true, error: "未偵測到 YouTube 登入憑證" };
     }
+
+    const time = Math.floor(Date.now() / 1000);
+    const msg = `${time} ${sapisid} https://www.youtube.com`;
+    const buffer = new TextEncoder().encode(msg);
+    const hashBuffer = await crypto.subtle.digest("SHA-1", buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    const authHeader = `SAPISIDHASH ${time}_${hashHex}`;
+
+    let apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+    let clientVersion = "2.20261112.10.00";
+    try {
+      if (window.ytcfg && typeof window.ytcfg.get === "function") {
+        apiKey = window.ytcfg.get("INNERTUBE_API_KEY") || apiKey;
+        const ctx = window.ytcfg.get("INNERTUBE_CONTEXT");
+        if (ctx?.client?.clientVersion) clientVersion = ctx.client.clientVersion;
+      }
+    } catch (e) {}
 
     const payload = {
       context: {
         client: {
           clientName: "WEB",
-          clientVersion: "2.20261112.10.00",
+          clientVersion: clientVersion,
           hl: "zh-TW",
           gl: "TW"
         }
@@ -1014,14 +1025,13 @@ async function toggleYouTubePlaylist(videoId, playlistId, add) {
       ]
     };
 
-    const res = await fetch("https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8", {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=${apiKey}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": authHeader,
-        "X-Origin": "https://www.youtube.com",
         "X-YouTube-Client-Name": "1",
-        "X-YouTube-Client-Version": "2.20261112.10.00"
+        "X-YouTube-Client-Version": clientVersion
       },
       body: JSON.stringify(payload),
       credentials: "include"
@@ -1030,7 +1040,84 @@ async function toggleYouTubePlaylist(videoId, playlistId, add) {
     const json = await res.json();
     return { success: true, add, playlistId, json };
   } catch (err) {
-    console.error("toggleYouTubePlaylist error:", err);
-    return { success: false, error: err.message || "操作播放清單失敗" };
+    return { success: false, error: err.message || "修改清單發生例外" };
   }
+}
+
+// 取得使用者的 YouTube 播放清單 (優先調度現有 YouTube 分頁，100% 同源與自動帶 Cookies)
+async function fetchYouTubePlaylists(videoId) {
+  // 1. 查找目前瀏覽器是否已開有 YouTube 分頁
+  const tabs = await chrome.tabs.query({ url: "*://*.youtube.com/*" });
+  const targetTab = tabs?.find((t) => t.id && !t.discarded) || tabs?.[0];
+
+  if (targetTab && targetTab.id) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: targetTab.id },
+        func: inPageGetYouTubePlaylists,
+        args: [videoId]
+      });
+      if (results && results[0]?.result) {
+        return results[0].result;
+      }
+    } catch (e) {
+      console.warn("executeScript on existing YouTube tab failed:", e);
+    }
+  }
+
+  // 2. 若目前完全沒有開啟的 YouTube 分頁，在背景開啟一個未聚焦的分頁完成查詢
+  return new Promise((resolve) => {
+    chrome.tabs.create({ url: "https://www.youtube.com/", active: false }, (newTab) => {
+      let isHandled = false;
+
+      const finish = (result) => {
+        if (isHandled) return;
+        isHandled = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        if (newTab?.id) chrome.tabs.remove(newTab.id).catch(() => {});
+        resolve(result);
+      };
+
+      const listener = async (tabId, changeInfo) => {
+        if (tabId === newTab.id && changeInfo.status === "complete") {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId: newTab.id },
+              func: inPageGetYouTubePlaylists,
+              args: [videoId]
+            });
+            finish(results?.[0]?.result || { success: false, error: "未取得清單資料" });
+          } catch (err) {
+            finish({ success: false, error: err.message });
+          }
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+      setTimeout(() => finish({ success: false, error: "連線 YouTube 逾時，請在瀏覽器開啟 YouTube" }), 6000);
+    });
+  });
+}
+
+// 將影片加入或移除指定 YouTube 播放清單 (同源執行)
+async function toggleYouTubePlaylist(videoId, playlistId, add) {
+  const tabs = await chrome.tabs.query({ url: "*://*.youtube.com/*" });
+  const targetTab = tabs?.find((t) => t.id && !t.discarded) || tabs?.[0];
+
+  if (targetTab && targetTab.id) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: targetTab.id },
+        func: inPageToggleYouTubePlaylist,
+        args: [videoId, playlistId, add]
+      });
+      if (results && results[0]?.result) {
+        return results[0].result;
+      }
+    } catch (e) {
+      console.warn("executeScript on existing YouTube tab failed:", e);
+    }
+  }
+
+  return { success: false, error: "請開啟至少一個 YouTube 分頁以同步修改" };
 }
