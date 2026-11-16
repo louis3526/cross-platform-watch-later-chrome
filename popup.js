@@ -210,8 +210,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnDown) btnDown.textContent = t("btnCloudDownload");
     const btnCloseC = document.getElementById("btn-close-cloud-modal");
     if (btnCloseC) btnCloseC.textContent = t("btnClose");
-    const cloudTipsBox = document.querySelector("#modal-cloud-sync div:last-child");
-    setSafeLines(cloudTipsBox, t("cloudTips"));
+    const cloudTipsBox = document.getElementById("cloud-tips-box");
+    if (cloudTipsBox) setSafeLines(cloudTipsBox, t("cloudTips"));
 
     // 備份彈窗
     const backupH3 = document.querySelector("#modal-backup h3");
@@ -1726,6 +1726,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btnCloseCloudModal?.addEventListener("click", () => {
     modalCloudSync.style.display = "none";
+  });
+
+  modalCloudSync?.addEventListener("click", (e) => {
+    if (e.target === modalCloudSync) {
+      modalCloudSync.style.display = "none";
+    }
+  });
+
+  modalBackup?.addEventListener("click", (e) => {
+    if (e.target === modalBackup) {
+      modalBackup.style.display = "none";
+    }
+  });
+
+  // 全域按 Esc 鍵立即關閉任何開啟中的彈窗
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      [modalCloudSync, modalBackup, modalYtPlaylists, modalCrossGroups].forEach((m) => {
+        if (m && m.style.display !== "none") {
+          m.style.display = "none";
+        }
+      });
+    }
   });
 
   btnCopySyncCode?.addEventListener("click", () => {
