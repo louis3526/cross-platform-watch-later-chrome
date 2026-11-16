@@ -22,7 +22,7 @@
     return typeof getTranslation === "function" ? getTranslation(activeLang, key, params) : key;
   }
 
-  // 回應 Popup「加入當前分頁」詢問目前畫面正在播放的短片資訊
+  // 回應 Popup「加入當前分頁」或「呼叫 YouTube 儲存清單面板」指令
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.action === "GET_ACTIVE_SHORT_INFO") {
       const st = singleShortBtnState;
@@ -34,7 +34,24 @@
       });
       return true;
     }
+
+    if (msg?.action === "OPEN_YT_SAVE_PANEL") {
+      openYouTubeSavePlaylistPanel();
+      sendResponse({ success: true });
+      return true;
+    }
   });
+
+  // 檢查網址是否帶有 dali_save 參數 (從外掛清單點擊「存至清單」自動叫出 YouTube 原生儲存面板)
+  if (
+    location.hostname.includes("youtube.com") &&
+    (location.search.includes("dali_save") || location.hash.includes("dali_save"))
+  ) {
+    setTimeout(openYouTubeSavePlaylistPanel, 1200);
+    window.addEventListener("yt-navigate-finish", () => {
+      setTimeout(openYouTubeSavePlaylistPanel, 800);
+    }, { once: true });
+  }
 
   // 1. 全域初始化：在所有影片卡片上注入「封面浮動按鈕」
   initCardThumbnailButtons();
@@ -680,6 +697,102 @@
     toastTimeout = setTimeout(() => {
       toast.classList.remove("show");
     }, 2400);
+  }
+
+  /**
+   * 自動尋找並觸發 YouTube 原生「儲存至播放清單」面板 (截圖 42)
+   */
+  function openYouTubeSavePlaylistPanel() {
+    if (!location.hostname.includes("youtube.com")) return;
+
+    // 1. 若已經開啟儲存彈窗，提示即可
+    const existingDialog = document.querySelector(
+      "ytd-add-to-playlist-renderer, tp-yt-paper-dialog[aria-label*='儲存'], tp-yt-paper-dialog[aria-label*='Save']"
+    );
+    if (existingDialog && existingDialog.offsetParent !== null) {
+      showToast(ci18n("ytSavePanelOpened"));
+      return;
+    }
+
+    let attempts = 0;
+    const maxAttempts = 24; // 約 8 秒持續重試以應對 SPA 動態渲染
+
+    const poller = setInterval(() => {
+      attempts++;
+
+      // 檢查直接露出的「儲存」按鈕 (包含各國語言與各種 YouTube 樣式)
+      const directButtons = document.querySelectorAll(
+        "ytd-watch-metadata button, #top-level-buttons-computed button, ytd-menu-renderer button"
+      );
+      for (const btn of directButtons) {
+        const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
+        const txt = (btn.textContent || "").toLowerCase();
+        if (
+          aria.includes("儲存至播放清單") ||
+          aria.includes("save to playlist") ||
+          aria.includes("儲存") ||
+          aria.includes("save") ||
+          txt.includes("儲存") ||
+          txt.includes("save")
+        ) {
+          clearInterval(poller);
+          btn.click();
+          showToast(ci18n("ytSavePanelOpened"));
+          return;
+        }
+      }
+
+      // 檢查具有播放清單圖示的按鈕 (playlist / add_to_playlist)
+      const icons = document.querySelectorAll(
+        "ytd-watch-metadata yt-icon, #top-level-buttons-computed yt-icon"
+      );
+      for (const icon of icons) {
+        const iconType = icon.getAttribute("icon") || "";
+        if (iconType.includes("playlist") || iconType.includes("add_to_playlist")) {
+          const b = icon.closest("button");
+          if (b && b.offsetParent !== null) {
+            clearInterval(poller);
+            b.click();
+            showToast(ci18n("ytSavePanelOpened"));
+            return;
+          }
+        }
+      }
+
+      // 嘗試展開「更多操作 (...)」選單並尋找儲存項目
+      const overflowBtn = document.querySelector(
+        "ytd-watch-metadata ytd-menu-renderer ytd-menu-overflow-button-renderer button, " +
+        "#top-level-buttons-computed ytd-menu-overflow-button-renderer button, " +
+        "ytd-watch-metadata button[aria-label*='更多操作'], " +
+        "ytd-watch-metadata button[aria-label*='更多'], " +
+        "ytd-watch-metadata button[aria-label*='More actions'], " +
+        "#top-level-buttons-computed button[aria-label*='更多'], " +
+        "#top-level-buttons-computed button[aria-label*='More actions']"
+      );
+
+      if (overflowBtn && overflowBtn.offsetParent !== null) {
+        overflowBtn.click();
+        setTimeout(() => {
+          const menuItems = document.querySelectorAll(
+            "ytd-menu-service-item-renderer, tp-yt-paper-item, ytd-menu-navigation-item-renderer, yt-list-item-view-model"
+          );
+          for (const item of menuItems) {
+            const tText = (item.textContent || "").trim();
+            const aText = (item.getAttribute("aria-label") || "").trim();
+            if (tText.includes("儲存") || tText.includes("Save") || aText.includes("儲存") || aText.includes("Save")) {
+              item.click();
+              clearInterval(poller);
+              showToast(ci18n("ytSavePanelOpened"));
+              return;
+            }
+          }
+        }, 250);
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(poller);
+      }
+    }, 350);
   }
 
   /* ==========================================================================

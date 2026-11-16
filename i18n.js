@@ -70,6 +70,11 @@ const I18N_DICT = {
     moveTopTitle: "移至最上方 (置頂)",
     moveBottomTitle: "移至最下方 (置底)",
     deleteItemTitle: "刪除此影片",
+    saveYtBtn: "📑 存至清單",
+    saveYtTitle: "儲存此影片到 YouTube 播放清單 (自動開啟並彈出儲存選單)",
+    saveYtToastSuccess: "✅ 已在 YouTube 開啟儲存清單面板，請勾選播放清單！",
+    statusYtSaveOpening: "正在開啟 YouTube 儲存清單面板...",
+    ytOnlyError: "此功能僅支援 YouTube 影片",
     footerTip: "💡 按住滑鼠左鍵可直接拖曳上下排列順序",
 
     // 24小時雲端同步彈窗
@@ -199,6 +204,11 @@ const I18N_DICT = {
     moveTopTitle: "Move to Top",
     moveBottomTitle: "Move to Bottom",
     deleteItemTitle: "Remove video",
+    saveYtBtn: "📑 Save to YT",
+    saveYtTitle: "Save this video to YouTube playlist (opens and displays save dialog)",
+    saveYtToastSuccess: "✅ YouTube playlist dialog opened, select your target playlist!",
+    statusYtSaveOpening: "Opening YouTube save playlist dialog...",
+    ytOnlyError: "This feature is only supported for YouTube videos",
     footerTip: "💡 Left-click and drag to reorder the playlist",
 
     // 24/7 Cloud Sync Modal

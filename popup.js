@@ -600,7 +600,37 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       actionsDiv.append(btnTop, btnDel, btnBottom);
-      li.append(indexDiv, thumbBoxDiv, infoDiv, actionsDiv);
+
+      // 藍框處：YouTube 專屬「儲存至 YouTube 清單」按鈕 (截圖 42 & 43 需求)
+      const ytSaveBox = document.createElement("div");
+      ytSaveBox.className = "item-yt-save-box";
+
+      if (item.platform === "youtube") {
+        const btnSaveYt = document.createElement("button");
+        btnSaveYt.className = "btn-save-yt";
+        btnSaveYt.dataset.index = String(index);
+        btnSaveYt.title = t("saveYtTitle") || "儲存此影片到 YouTube 播放清單";
+
+        const saveIcon = document.createElement("span");
+        saveIcon.className = "btn-save-yt-icon";
+        saveIcon.textContent = "📑";
+
+        const saveText = document.createElement("span");
+        saveText.className = "btn-save-yt-text";
+        saveText.textContent = t("saveYtBtn") || "存至清單";
+
+        btnSaveYt.append(saveIcon, saveText);
+
+        btnSaveYt.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          saveToYouTubePlaylist(item);
+        });
+
+        ytSaveBox.appendChild(btnSaveYt);
+      }
+
+      li.append(indexDiv, thumbBoxDiv, infoDiv, ytSaveBox, actionsDiv);
 
       // 前端即時自動校正 B 站缺失或異常時長 (若包含純數字如 557 或缺失時長，直連官方 pagelist API 秒速補齊)
       const isBogusDur = !cleanDuration || cleanDuration === "00:01" || cleanDuration === "00:29" || !item.duration || !item.duration.includes(":") || /^\d+$/.test(item.duration.trim());
@@ -785,6 +815,46 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sortSelect) sortSelect.value = "manual";
     savePlaylist(currentPlaylist, () => {
       setStatus(`已將「${target.title}」排至最下方`, "success");
+    });
+  }
+
+  // 儲存影片至 YouTube 播放清單 (自動開啟或切換分頁並呼叫 YouTube 原生儲存面板，截圖 42 & 43)
+  function saveToYouTubePlaylist(item) {
+    if (!item || item.platform !== "youtube") {
+      setStatus(t("ytOnlyError") || "此功能僅支援 YouTube 影片", "error");
+      return;
+    }
+
+    const videoId = item.videoId;
+    let targetUrl = item.url || `https://www.youtube.com/watch?v=${videoId}`;
+    if (!targetUrl.includes("dali_save=1")) {
+      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "dali_save=1";
+    }
+
+    chrome.tabs.query({ url: "*://*.youtube.com/*" }, (tabs) => {
+      let matchedTab = null;
+      if (tabs && tabs.length > 0) {
+        for (const tab of tabs) {
+          if (tab.url && videoId && tab.url.includes(videoId)) {
+            matchedTab = tab;
+            break;
+          }
+        }
+      }
+
+      if (matchedTab && matchedTab.id) {
+        chrome.tabs.update(matchedTab.id, { active: true }, () => {
+          if (matchedTab.windowId) {
+            chrome.windows.update(matchedTab.windowId, { focused: true });
+          }
+          chrome.tabs.sendMessage(matchedTab.id, { action: "OPEN_YT_SAVE_PANEL" });
+          setStatus(t("statusYtSaveOpening") || "正在開啟 YouTube 儲存清單面板...", "success");
+        });
+      } else {
+        chrome.tabs.create({ url: targetUrl, active: true }, () => {
+          setStatus(t("statusYtSaveOpening") || "已在 YouTube 開啟並呼叫儲存清單面板！", "success");
+        });
+      }
     });
   }
 
