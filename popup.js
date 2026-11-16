@@ -61,6 +61,24 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedIds = new Set();
   let draggedItemIndex = null;
 
+  // 跨平台自訂群組清單資料 (預設群組 + 使用者自訂群組)
+  let videoGroups = [
+    { id: "grp_default", name: "預設清單", badge: "📁" },
+    { id: "grp_music", name: "音樂收藏", badge: "🎵" },
+    { id: "grp_tech", name: "科技開箱", badge: "💻" }
+  ];
+  let activeGroupFilter = "all";
+  const selectGroupFilter = document.getElementById("select-group-filter");
+
+  // 跨平台自訂群組彈窗元件
+  const modalCrossGroups = document.getElementById("modal-cross-groups");
+  const btnCloseCrossGroupsModal = document.getElementById("btn-close-cross-groups-modal");
+  const crossGroupsTargetTitle = document.getElementById("cross-groups-target-title");
+  const crossGroupsContainer = document.getElementById("cross-groups-container");
+  const inputNewGroupName = document.getElementById("input-new-group-name");
+  const btnCreateNewGroup = document.getElementById("btn-create-new-group");
+  let currentTargetGroupItem = null;
+
   // 讀取語言並套用 (預設隨作業系統自動偵測)
   initLanguage();
 
@@ -211,6 +229,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (ytModalH3) ytModalH3.textContent = t("ytModalTitle");
     const ytModalFall = document.getElementById("btn-yt-modal-fallback");
     if (ytModalFall) ytModalFall.textContent = t("ytModalFallback");
+
+    // 跨平台自訂群組彈窗
+    const crossGrpTitle = document.getElementById("cross-groups-modal-title");
+    if (crossGrpTitle) crossGrpTitle.textContent = t("crossGroupsModalTitle");
   }
 
   // 讀取全螢幕與倍速設定
@@ -263,6 +285,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 1. 載入狀態 (優先從本地安全快照還原，防清空)
   function loadState() {
+    chrome.storage.local.get(["video_groups"], (grpRes) => {
+      if (Array.isArray(grpRes?.video_groups) && grpRes.video_groups.length > 0) {
+        videoGroups = grpRes.video_groups;
+      }
+      updateGroupFilterUI();
+    });
+
     chrome.storage.local.get(["playlist", "playlist_backup", "playState"], (locRes) => {
       let list = Array.isArray(locRes?.playlist) ? locRes.playlist : [];
       if (list.length === 0 && Array.isArray(locRes?.playlist_backup) && locRes.playlist_backup.length > 0) {
@@ -472,16 +501,30 @@ document.addEventListener("DOMContentLoaded", () => {
       btnPlayAll.classList.replace("btn-secondary", "btn-success");
     }
 
-    if (currentPlaylist.length === 0) {
+    // 依據跨平台自訂群組篩選要顯示的影片列表
+    const displayList = activeGroupFilter === "all"
+      ? currentPlaylist
+      : currentPlaylist.filter((item) => {
+          if (!item.groupIds || item.groupIds.length === 0) {
+            return activeGroupFilter === "grp_default";
+          }
+          return item.groupIds.includes(activeGroupFilter);
+        });
+
+    if (displayList.length === 0) {
       emptyState.style.display = "block";
       playlistUl.replaceChildren();
+      updateGroupFilterUI();
       return;
     }
 
     emptyState.style.display = "none";
     playlistUl.replaceChildren();
+    updateGroupFilterUI();
 
-    currentPlaylist.forEach((item, index) => {
+    displayList.forEach((item, displayIdx) => {
+      const realIndex = currentPlaylist.findIndex((x) => x.id === item.id);
+      const index = realIndex >= 0 ? realIndex : displayIdx;
       const isCurrentPlaying = currentPlayState.isPlaying && currentPlayState.currentIndex === index;
       const li = document.createElement("li");
       li.className = `playlist-item ${isCurrentPlaying ? "is-playing" : ""}`;
@@ -607,10 +650,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       actionsDiv.append(btnTop, btnDel, btnBottom);
 
-      // 藍框處：YouTube 專屬「儲存至 YouTube 清單」按鈕 (截圖 42 & 43 需求)
+      // 藍框處：上下堆疊專屬按鈕 (上方: 存至 YouTube 清單 / 下方: 存至跨平台自訂群組)
       const ytSaveBox = document.createElement("div");
       ytSaveBox.className = "item-yt-save-box";
 
+      // 1. 上方：YouTube 原生清單按鈕 (僅 YouTube 影片顯示)
       if (item.platform === "youtube") {
         const btnSaveYt = document.createElement("button");
         btnSaveYt.className = "btn-save-yt";
@@ -623,7 +667,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const saveText = document.createElement("span");
         saveText.className = "btn-save-yt-text";
-        saveText.textContent = t("saveYtBtn") || "存至清單";
+        saveText.textContent = t("saveYtBtn") || "存至 YT";
 
         btnSaveYt.append(saveIcon, saveText);
 
@@ -635,6 +679,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         ytSaveBox.appendChild(btnSaveYt);
       }
+
+      // 2. 下方：跨平台自訂群組清單按鈕 (YouTube / B站 / TikTok / FB 所有平台影片均可歸納)
+      const btnSaveGrp = document.createElement("button");
+      btnSaveGrp.className = "btn-save-group";
+      btnSaveGrp.dataset.index = String(index);
+      btnSaveGrp.title = t("saveGroupTitle") || "儲存至跨平台自訂群組清單 (支援新增、改名、刪除與雙機同步)";
+
+      const grpIcon = document.createElement("span");
+      grpIcon.className = "btn-save-yt-icon";
+      grpIcon.textContent = "🗂️";
+
+      const grpText = document.createElement("span");
+      grpText.className = "btn-save-yt-text";
+      grpText.textContent = t("saveGroupBtn") || "存至群組";
+
+      btnSaveGrp.append(grpIcon, grpText);
+
+      btnSaveGrp.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCrossGroupsModal(item);
+      });
+
+      ytSaveBox.appendChild(btnSaveGrp);
 
       li.append(indexDiv, thumbBoxDiv, infoDiv, ytSaveBox, actionsDiv);
 
@@ -1006,6 +1074,254 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     ytPlaylistsContainer.style.display = "flex";
+  }
+
+  /* ==========================================================================
+     跨平台自訂群組清單管理 (新增、改名、刪除、跨平台歸納與雙機同步)
+     ========================================================================== */
+
+  // 更新主介面「群組篩選」下拉選單
+  function updateGroupFilterUI() {
+    if (!selectGroupFilter) return;
+    const currentVal = selectGroupFilter.value || activeGroupFilter;
+    selectGroupFilter.replaceChildren();
+
+    const optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = `🌟 全部影片 (${currentPlaylist.length})`;
+    selectGroupFilter.appendChild(optAll);
+
+    videoGroups.forEach((grp) => {
+      const count = currentPlaylist.filter((x) => {
+        if (!x.groupIds || x.groupIds.length === 0) return grp.id === "grp_default";
+        return x.groupIds.includes(grp.id);
+      }).length;
+
+      const opt = document.createElement("option");
+      opt.value = grp.id;
+      opt.textContent = `${grp.badge || "📁"} ${grp.name} (${count})`;
+      selectGroupFilter.appendChild(opt);
+    });
+
+    if (Array.from(selectGroupFilter.options).some((o) => o.value === currentVal)) {
+      selectGroupFilter.value = currentVal;
+    } else {
+      selectGroupFilter.value = "all";
+      activeGroupFilter = "all";
+    }
+  }
+
+  selectGroupFilter?.addEventListener("change", (e) => {
+    activeGroupFilter = e.target.value;
+    renderPlaylist();
+  });
+
+  // 開啟跨平台自訂群組彈窗
+  function openCrossGroupsModal(item) {
+    if (!item) return;
+    currentTargetGroupItem = item;
+
+    if (modalCrossGroups) modalCrossGroups.style.display = "flex";
+    if (crossGroupsTargetTitle) {
+      crossGroupsTargetTitle.textContent = item.title || "目標影片";
+    }
+
+    renderCrossGroupsModal();
+  }
+
+  // 渲染跨平台自訂群組清單
+  function renderCrossGroupsModal() {
+    if (!crossGroupsContainer || !currentTargetGroupItem) return;
+    crossGroupsContainer.replaceChildren();
+
+    const curGroupIds = Array.isArray(currentTargetGroupItem.groupIds)
+      ? currentTargetGroupItem.groupIds
+      : (currentTargetGroupItem.groupIds ? [currentTargetGroupItem.groupIds] : ["grp_default"]);
+
+    videoGroups.forEach((grp) => {
+      const isSelected = curGroupIds.includes(grp.id);
+
+      const count = currentPlaylist.filter((x) => {
+        if (!x.groupIds || x.groupIds.length === 0) return grp.id === "grp_default";
+        return x.groupIds.includes(grp.id);
+      }).length;
+
+      const itemRow = document.createElement("div");
+      itemRow.className = `cross-group-item ${isSelected ? "is-selected" : ""}`;
+      itemRow.dataset.groupId = grp.id;
+
+      const leftBox = document.createElement("div");
+      leftBox.className = "cross-group-left";
+
+      const badgeSpan = document.createElement("span");
+      badgeSpan.className = "cross-group-badge";
+      badgeSpan.textContent = grp.badge || "📁";
+
+      const infoBox = document.createElement("div");
+      infoBox.className = "cross-group-info";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "cross-group-name";
+      nameSpan.textContent = grp.name;
+      nameSpan.title = grp.name;
+
+      const countSpan = document.createElement("span");
+      countSpan.className = "cross-group-count";
+      countSpan.textContent = `${count} 部影片`;
+
+      infoBox.append(nameSpan, countSpan);
+      leftBox.append(badgeSpan, infoBox);
+
+      const rightBox = document.createElement("div");
+      rightBox.className = "cross-group-right";
+
+      // ✏️ 重新命名按鈕
+      const btnEdit = document.createElement("button");
+      btnEdit.className = "cross-group-btn-edit";
+      btnEdit.title = "重新命名此群組";
+      btnEdit.textContent = "✏️";
+      btnEdit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const newName = window.prompt("請輸入新的群組名稱：", grp.name);
+        if (newName && newName.trim() && newName.trim() !== grp.name) {
+          grp.name = newName.trim().slice(0, 30);
+          saveCustomGroups();
+          renderCrossGroupsModal();
+          updateGroupFilterUI();
+          setStatus(`✓ 已將群組更名為「${grp.name}」`, "success");
+        }
+      });
+
+      // 🗑️ 刪除群組按鈕 (預設群組不可刪除)
+      const btnDel = document.createElement("button");
+      btnDel.className = "cross-group-btn-del";
+      btnDel.title = "刪除此群組";
+      btnDel.textContent = "🗑️";
+      if (grp.id === "grp_default") {
+        btnDel.style.display = "none";
+      } else {
+        btnDel.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (window.confirm(`確定要刪除「${grp.name}」群組嗎？（群組內的影片仍會保留於全部影片清單）`)) {
+            videoGroups = videoGroups.filter((g) => g.id !== grp.id);
+            // 同時從所有影片中移除此群組 ID
+            currentPlaylist.forEach((x) => {
+              if (Array.isArray(x.groupIds)) {
+                x.groupIds = x.groupIds.filter((gid) => gid !== grp.id);
+              }
+            });
+            saveCustomGroups();
+            savePlaylist(currentPlaylist);
+            renderCrossGroupsModal();
+            updateGroupFilterUI();
+            renderPlaylist();
+            setStatus(`✓ 已刪除群組「${grp.name}」`, "success");
+          }
+        });
+      }
+
+      // 勾選圖示 (已在群組 🔖，未在群組 📑)
+      const checkSpan = document.createElement("span");
+      checkSpan.className = "cross-group-check";
+      checkSpan.textContent = isSelected ? "🔖" : "📑";
+      checkSpan.title = isSelected ? "已在此群組 (點擊移出)" : "未在此群組 (點擊加入)";
+
+      rightBox.append(btnEdit, btnDel, checkSpan);
+      itemRow.append(leftBox, rightBox);
+
+      // 點擊整列切換加入/移出
+      itemRow.addEventListener("click", () => {
+        if (!Array.isArray(currentTargetGroupItem.groupIds)) {
+          currentTargetGroupItem.groupIds = ["grp_default"];
+        }
+
+        const idx = currentTargetGroupItem.groupIds.indexOf(grp.id);
+        if (idx >= 0) {
+          currentTargetGroupItem.groupIds.splice(idx, 1);
+          if (currentTargetGroupItem.groupIds.length === 0) {
+            currentTargetGroupItem.groupIds = ["grp_default"];
+          }
+          setStatus(`✓ 已從「${grp.name}」移出`, "success");
+        } else {
+          currentTargetGroupItem.groupIds.push(grp.id);
+          setStatus(`✓ 已加入「${grp.name}」！`, "success");
+        }
+
+        savePlaylist(currentPlaylist);
+        renderCrossGroupsModal();
+        updateGroupFilterUI();
+        renderPlaylist();
+      });
+
+      crossGroupsContainer.appendChild(itemRow);
+    });
+  }
+
+  // 儲存群組設定到 local
+  function saveCustomGroups() {
+    chrome.storage.local.set({ video_groups: videoGroups });
+  }
+
+  // 關閉跨平台群組彈窗事件
+  if (btnCloseCrossGroupsModal) {
+    btnCloseCrossGroupsModal.addEventListener("click", () => {
+      if (modalCrossGroups) modalCrossGroups.style.display = "none";
+    });
+  }
+
+  if (modalCrossGroups) {
+    modalCrossGroups.addEventListener("click", (e) => {
+      if (e.target === modalCrossGroups) {
+        modalCrossGroups.style.display = "none";
+      }
+    });
+  }
+
+  // 新增跨平台群組按鈕事件
+  if (btnCreateNewGroup && inputNewGroupName) {
+    btnCreateNewGroup.addEventListener("click", () => {
+      const name = inputNewGroupName.value.trim();
+      if (!name) {
+        setStatus("請先輸入新群組名稱！", "error");
+        return;
+      }
+
+      if (videoGroups.some((g) => g.name === name)) {
+        setStatus("已有相同名稱的群組！", "error");
+        return;
+      }
+
+      const newId = `grp_${Date.now().toString(36)}`;
+      const badges = ["🎬", "🎧", "💡", "🔥", "🚀", "🌟", "📚", "🏖️"];
+      const badge = badges[videoGroups.length % badges.length];
+
+      const newGrp = { id: newId, name: name.slice(0, 30), badge };
+      videoGroups.push(newGrp);
+      saveCustomGroups();
+
+      // 若當前有開啟某部影片，自動為其勾選此新群組
+      if (currentTargetGroupItem) {
+        if (!Array.isArray(currentTargetGroupItem.groupIds)) {
+          currentTargetGroupItem.groupIds = ["grp_default"];
+        }
+        if (!currentTargetGroupItem.groupIds.includes(newId)) {
+          currentTargetGroupItem.groupIds.push(newId);
+          savePlaylist(currentPlaylist);
+        }
+      }
+
+      inputNewGroupName.value = "";
+      renderCrossGroupsModal();
+      updateGroupFilterUI();
+      renderPlaylist();
+      setStatus(`✓ 成功建立新群組「${name}」！`, "success");
+    });
+
+    inputNewGroupName.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        btnCreateNewGroup.click();
+      }
+    });
   }
 
   /**

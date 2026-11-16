@@ -657,9 +657,11 @@ body {
   color: #94a3b8;
 }
 
-/* 儲存至 YouTube 播放清單按鈕 (截圖 42 & 43 藍框位置) */
+/* 儲存按鈕容器 (支援 YouTube 專屬清單 + 跨平台自訂群組清單) */
 .item-yt-save-box {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -671,19 +673,20 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.35);
   color: #fca5a5;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   user-select: none;
-  height: 32px;
+  height: 26px;
+  min-width: 82px;
 }
 
 .btn-save-yt:hover {
@@ -691,20 +694,52 @@ body {
   border-color: #ef4444;
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);
 }
 
 .btn-save-yt:active {
   transform: translateY(0);
 }
 
+.btn-save-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(99, 102, 241, 0.38);
+  color: #a5b4fc;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  user-select: none;
+  height: 26px;
+  min-width: 82px;
+}
+
+.btn-save-group:hover {
+  background: #6366f1;
+  border-color: #818cf8;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.4);
+}
+
+.btn-save-group:active {
+  transform: translateY(0);
+}
+
 .btn-save-yt-icon {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .btn-save-yt-text {
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
 }
 
 .item-actions {
@@ -964,4 +999,195 @@ body {
 .yt-playlist-item.is-updating {
   opacity: 0.6;
   pointer-events: none;
+}
+
+/* 跨平台自訂群組彈窗專用樣式 (支援新增、改名、刪除與雙機雲端同步) */
+.cross-groups-modal-box {
+  max-width: 440px;
+  background-color: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+.cross-groups-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cross-groups-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.cross-groups-video-info {
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+}
+
+.cross-groups-target-title {
+  font-size: 11.5px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cross-groups-list {
+  max-height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  padding-right: 2px;
+}
+
+.cross-groups-list::-webkit-scrollbar {
+  width: 5px;
+}
+.cross-groups-list::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+
+.cross-group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.cross-group-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.cross-group-item.is-selected {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.cross-group-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cross-group-badge {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.cross-group-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cross-group-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #f1f5f9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cross-group-count {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cross-group-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cross-group-btn-edit,
+.cross-group-btn-del {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+
+.cross-group-btn-edit:hover {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.cross-group-btn-del:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.cross-group-check {
+  font-size: 17px;
+  color: #64748b;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.cross-group-item.is-selected .cross-group-check {
+  color: #818cf8;
+  transform: scale(1.15);
+}
+
+/* 底部新增群組區塊 */
+.cross-groups-add-box {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cross-groups-add-box input {
+  flex: 1;
+  background-color: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #f1f5f9;
+  font-size: 12px;
+  outline: none;
+}
+
+.cross-groups-add-box input:focus {
+  border-color: #818cf8;
+}
+
+.cross-groups-sync-tip {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+  text-align: center;
 }

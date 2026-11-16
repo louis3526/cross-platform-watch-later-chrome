@@ -79,6 +79,14 @@
             <option value="title-asc">🔤 標題名稱 (A ➔ Z)</option>
           </select>
         </div>
+
+        <!-- 跨平台群組篩選下拉選單 -->
+        <div class="sort-wrapper group-filter-wrapper">
+          <label for="select-group-filter" class="sort-label">群組:</label>
+          <select id="select-group-filter" class="sort-select" title="依照跨平台自訂群組進行分類篩選檢視">
+            <option value="all">🌟 全部影片</option>
+          </select>
+        </div>
       </div>
 
       <div class="list-meta-actions">
@@ -212,6 +220,37 @@
         <button id="btn-yt-modal-fallback" class="btn btn-primary btn-sm" style="margin-top: 8px;">
           在新分頁開啟 YouTube 儲存 ↗
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 跨平台自訂群組清單彈窗 (支援新增群組、修改命名、刪除、跨平台收納與多電腦同步) -->
+  <div id="modal-cross-groups" class="modal-overlay" style="display: none;">
+    <div class="modal-box cross-groups-modal-box">
+      <div class="cross-groups-modal-header">
+        <h3 id="cross-groups-modal-title">🗂️ 儲存至跨平台清單...</h3>
+        <button id="btn-close-cross-groups-modal" class="btn-icon" title="關閉" style="font-size: 16px; padding: 4px 8px;">✕</button>
+      </div>
+
+      <!-- 目標影片提示 -->
+      <div class="cross-groups-video-info">
+        <span id="cross-groups-target-title" class="cross-groups-target-title">正在選擇目標影片...</span>
+      </div>
+
+      <!-- 群組清單容器 (支援動態增刪改查與即時勾選) -->
+      <div id="cross-groups-container" class="cross-groups-list">
+        <!-- 動態渲染各個跨平台群組 -->
+      </div>
+
+      <!-- 底部新增群組區塊 (使用者要求可新增群組) -->
+      <div class="cross-groups-add-box">
+        <input type="text" id="input-new-group-name" placeholder="輸入新群組名稱 (例如: 科技、音樂、健身)..." maxlength="30">
+        <button id="btn-create-new-group" class="btn btn-primary btn-sm">➕ 新增群組</button>
+      </div>
+
+      <!-- 雲端同步提示 -->
+      <div class="cross-groups-sync-tip">
+        <span>☁️ 跨平台群組已打通雙電腦同步中繼站，在任一台電腦修改均可隨時同步！</span>
       </div>
     </div>
   </div>

@@ -43,7 +43,8 @@ function packListForCloud(list) {
     d: item.duration || "",
     a: item.addedAt || Date.now(),
     u: item.url || "",
-    i: item.thumbnail || ""
+    i: item.thumbnail || "",
+    g: Array.isArray(item.groupIds) ? item.groupIds : ["grp_default"]
   }));
 }
 
@@ -86,7 +87,8 @@ function unpackListFromCloud(rawList) {
       title: raw.t || defaultTitle,
       thumbnail: raw.i || defaultThumb,
       duration: raw.d || "",
-      addedAt: raw.a || Date.now()
+      addedAt: raw.a || Date.now(),
+      groupIds: Array.isArray(raw.g) ? raw.g : ["grp_default"]
     };
   });
 }
@@ -106,8 +108,11 @@ async function uploadToCloudSync(playlist, customCode = null) {
   }
 
   const packed = packListForCloud(playlist);
+  const grpRes = await chrome.storage.local.get(["video_groups"]);
+  const groups = grpRes?.video_groups || [];
   const jsonStr = JSON.stringify({
     playlist: packed,
+    groups: groups,
     count: playlist.length,
     updatedAt: Date.now()
   });
@@ -178,11 +183,15 @@ async function downloadFromCloudSync(customCode = null) {
         const data = JSON.parse(text.trim());
         if (data && Array.isArray(data.playlist)) {
           const unpacked = unpackListFromCloud(data.playlist);
+          if (Array.isArray(data.groups) && data.groups.length > 0) {
+            await chrome.storage.local.set({ video_groups: data.groups });
+          }
           await setCloudSyncCode(code);
           await chrome.storage.local.set({ cloud_last_synced: data.updatedAt || Date.now() });
           return {
             success: true,
             playlist: unpacked,
+            groups: data.groups || [],
             count: unpacked.length,
             updatedAt: data.updatedAt || Date.now()
           };
@@ -204,11 +213,15 @@ async function downloadFromCloudSync(customCode = null) {
       const data = await npointResp.json();
       if (data && Array.isArray(data.playlist)) {
         const unpacked = unpackListFromCloud(data.playlist);
+        if (Array.isArray(data.groups) && data.groups.length > 0) {
+          await chrome.storage.local.set({ video_groups: data.groups });
+        }
         await setCloudSyncCode(code);
         await chrome.storage.local.set({ cloud_last_synced: data.updatedAt || Date.now() });
         return {
           success: true,
           playlist: unpacked,
+          groups: data.groups || [],
           count: unpacked.length,
           updatedAt: data.updatedAt || Date.now()
         };
