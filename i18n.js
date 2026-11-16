@@ -35,7 +35,7 @@ const I18N_DICT = {
     btnBackupTitle: "備份或匯入清單 (JSON)",
 
     // 控制列
-    btnPlayAll: "從頭自動播放",
+    btnPlayAll: "從頭播放",
     btnStopPlay: "停止連播",
     chkFullscreen: "全螢幕",
     chkFullscreenTitle: "播放每部影片時自動切換至最大全螢幕模式",
@@ -177,7 +177,7 @@ const I18N_DICT = {
     btnBackupTitle: "Backup or import playlist (JSON)",
 
     // Control bar
-    btnPlayAll: "Autoplay from Start",
+    btnPlayAll: "Play All",
     btnStopPlay: "Stop Autoplay",
     chkFullscreen: "Fullscreen",
     chkFullscreenTitle: "Automatically switch video player into edge-to-edge fullscreen on playback",

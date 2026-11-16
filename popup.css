@@ -159,28 +159,38 @@ body {
   font-size: 12px;
 }
 
-/* 播放與排序控制列 (高度緊湊化) */
+/* 播放與排序控制列 (高度緊湊化 + 全排單行防折行) */
 .control-section {
-  padding: 6px 16px;
+  padding: 6px 12px;
   background-color: rgba(30, 41, 59, 0.6);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .playback-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.control-section .btn,
+.control-section .toolbar-toggle-label,
+.control-section .sort-label {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 排序下拉選單 */
 .sort-wrapper {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .sort-label {
@@ -195,12 +205,18 @@ body {
   color: #f1f5f9;
   font-size: 11.5px;
   font-weight: 500;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 6px;
   outline: none;
   cursor: pointer;
-  height: 30px;
+  height: 28px;
+  max-width: 140px;
+  text-overflow: ellipsis;
   transition: border-color 0.15s;
+}
+
+#select-group-filter {
+  max-width: 120px;
 }
 
 .sort-select:focus {

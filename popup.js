@@ -497,7 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btnPlayAll.classList.replace("btn-success", "btn-secondary");
     } else {
       btnStopPlay.style.display = "none";
-      playBtnText.textContent = currentPlaylist.length > 0 ? `▶ ${t("btnPlayAll")}` : t("emptyTitle");
+      playBtnText.textContent = currentPlaylist.length > 0 ? t("btnPlayAll") : t("emptyTitle");
       btnPlayAll.classList.replace("btn-secondary", "btn-success");
     }
 
