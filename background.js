@@ -184,6 +184,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (action === "GET_YT_PLAYLISTS") {
+    fetchYouTubePlaylists(message.videoId).then((res) => sendResponse(res));
+    return true;
+  }
+
+  if (action === "TOGGLE_YT_PLAYLIST") {
+    toggleYouTubePlaylist(message.videoId, message.playlistId, message.add).then((res) => sendResponse(res));
+    return true;
+  }
 });
 
 const CHUNK_SIZE = 8; // 每個分塊 8 部輕量化影片 (約 2.3KB，留有 72% 巨量安全餘裕，徹底消除 QuotaBytesPerItem 異常)
@@ -844,4 +854,183 @@ async function backfillMissingDurations() {
     await saveSyncedPlaylist(list);
   }
   isBackfilling = false;
+}
+
+/* ==========================================================================
+   YouTube 原生播放清單管理 API (InnerTube 官方架構，截圖 44 支援)
+   ========================================================================== */
+
+// 計算 YouTube SAPISIDHASH 認證標頭
+async function getYouTubeAuthHeader() {
+  return new Promise((resolve) => {
+    chrome.cookies.get({ url: "https://www.youtube.com", name: "SAPISID" }, async (c1) => {
+      let sapisid = c1?.value;
+      if (!sapisid) {
+        chrome.cookies.get({ url: "https://www.youtube.com", name: "__Secure-3PAPISID" }, async (c2) => {
+          sapisid = c2?.value;
+          if (!sapisid) return resolve(null);
+          resolve(await computeSapisidHash(sapisid));
+        });
+      } else {
+        resolve(await computeSapisidHash(sapisid));
+      }
+    });
+  });
+}
+
+async function computeSapisidHash(sapisid) {
+  const time = Math.floor(Date.now() / 1000);
+  const msg = `${time} ${sapisid} https://www.youtube.com`;
+  const buffer = new TextEncoder().encode(msg);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `SAPISIDHASH ${time}_${hashHex}`;
+}
+
+// 取得使用者的 YouTube 播放清單 (直接連線 InnerTube 官方端點)
+async function fetchYouTubePlaylists(videoId) {
+  try {
+    const authHeader = await getYouTubeAuthHeader();
+    if (!authHeader) {
+      return { success: false, needLogin: true, error: "尚未在瀏覽器中登入 YouTube 帳號" };
+    }
+
+    const payload = {
+      context: {
+        client: {
+          clientName: "WEB",
+          clientVersion: "2.20261112.10.00",
+          hl: "zh-TW",
+          gl: "TW"
+        }
+      },
+      videoIds: [videoId]
+    };
+
+    const res = await fetch("https://www.youtube.com/youtubei/v1/playlist/get_add_to_playlist?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authHeader,
+        "X-Origin": "https://www.youtube.com",
+        "X-YouTube-Client-Name": "1",
+        "X-YouTube-Client-Version": "2.20261112.10.00"
+      },
+      body: JSON.stringify(payload),
+      credentials: "include"
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      return { success: false, needLogin: true, error: "登入憑證已過期，請重新整理 YouTube 頁面" };
+    }
+
+    const json = await res.json();
+    const playlists = [];
+
+    // 遍歷所有層級找到 addToPlaylistRenderer / playlistAddToOptionRenderer
+    const traverse = (node) => {
+      if (!node || typeof node !== "object") return;
+
+      if (node.playlistId && (node.title || node.containsSelectedVideos !== undefined)) {
+        let title = "";
+        if (typeof node.title === "string") title = node.title;
+        else if (node.title?.simpleText) title = node.title.simpleText;
+        else if (node.title?.runs?.[0]?.text) title = node.title.runs[0].text;
+
+        const pId = node.playlistId;
+        const contains = node.containsSelectedVideos === "ALL";
+
+        let privacy = "私人";
+        const privStr = (node.privacy || node.icon?.iconType || "").toLowerCase();
+        if (privStr.includes("public")) privacy = "公開";
+        else if (privStr.includes("unlisted")) privacy = "不公開";
+
+        let thumb = "";
+        if (Array.isArray(node.thumbnails) && node.thumbnails[0]?.url) {
+          thumb = node.thumbnails[0].url;
+        }
+
+        // 避免重複加入
+        if (!playlists.some((p) => p.playlistId === pId)) {
+          playlists.push({
+            playlistId: pId,
+            title: title || (pId === "WL" ? "Watch later" : "播放清單"),
+            contains: contains,
+            privacy: privacy,
+            thumbnail: thumb
+          });
+        }
+        return;
+      }
+
+      for (const k of Object.keys(node)) {
+        traverse(node[k]);
+      }
+    };
+
+    traverse(json);
+
+    // 確保「稍後觀看 (Watch later)」存在：若列表中未見，置頂補上預設的 WL
+    if (!playlists.some((p) => p.playlistId === "WL")) {
+      playlists.unshift({
+        playlistId: "WL",
+        title: "Watch later",
+        contains: false,
+        privacy: "私人",
+        thumbnail: ""
+      });
+    }
+
+    return { success: true, playlists };
+  } catch (err) {
+    console.error("fetchYouTubePlaylists error:", err);
+    return { success: false, error: err.message || "取得 YouTube 清單失敗" };
+  }
+}
+
+// 將影片加入或移除指定 YouTube 播放清單
+async function toggleYouTubePlaylist(videoId, playlistId, add) {
+  try {
+    const authHeader = await getYouTubeAuthHeader();
+    if (!authHeader) {
+      return { success: false, needLogin: true, error: "尚未在瀏覽器中登入 YouTube 帳號" };
+    }
+
+    const payload = {
+      context: {
+        client: {
+          clientName: "WEB",
+          clientVersion: "2.20261112.10.00",
+          hl: "zh-TW",
+          gl: "TW"
+        }
+      },
+      playlistId: playlistId,
+      actions: [
+        add
+          ? { action: "ACTION_ADD_VIDEO", addedVideoId: videoId }
+          : { action: "ACTION_REMOVE_VIDEO_BY_VIDEO_ID", removedVideoId: videoId }
+      ]
+    };
+
+    const res = await fetch("https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authHeader,
+        "X-Origin": "https://www.youtube.com",
+        "X-YouTube-Client-Name": "1",
+        "X-YouTube-Client-Version": "2.20261112.10.00"
+      },
+      body: JSON.stringify(payload),
+      credentials: "include"
+    });
+
+    const json = await res.json();
+    return { success: true, add, playlistId, json };
+  } catch (err) {
+    console.error("toggleYouTubePlaylist error:", err);
+    return { success: false, error: err.message || "操作播放清單失敗" };
+  }
 }

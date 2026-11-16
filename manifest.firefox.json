@@ -24,7 +24,8 @@
     "contextMenus",
     "scripting",
     "clipboardRead",
-    "clipboardWrite"
+    "clipboardWrite",
+    "cookies"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",

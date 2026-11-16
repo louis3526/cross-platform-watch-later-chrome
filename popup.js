@@ -205,6 +205,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnDownloadJson) btnDownloadJson.textContent = t("btnDownloadFile");
     if (btnUploadJson) btnUploadJson.textContent = t("btnUploadFile");
     if (btnCloseModal) btnCloseModal.textContent = t("btnClose");
+
+    // YouTube 儲存至清單彈窗 (截圖 44)
+    const ytModalH3 = document.getElementById("yt-modal-title");
+    if (ytModalH3) ytModalH3.textContent = t("ytModalTitle");
+    const ytModalFall = document.getElementById("btn-yt-modal-fallback");
+    if (ytModalFall) ytModalFall.textContent = t("ytModalFallback");
   }
 
   // 讀取全螢幕與倍速設定
@@ -818,44 +824,188 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 儲存影片至 YouTube 播放清單 (自動開啟或切換分頁並呼叫 YouTube 原生儲存面板，截圖 42 & 43)
+  // YouTube 播放清單選擇彈窗元素 (截圖 44 原生樣式，無新增群組按鈕)
+  const modalYtPlaylists = document.getElementById("modal-yt-playlists");
+  const btnCloseYtModal = document.getElementById("btn-close-yt-playlists-modal");
+  const ytModalTargetTitle = document.getElementById("yt-modal-target-title");
+  const ytPlaylistsLoading = document.getElementById("yt-playlists-loading");
+  const ytPlaylistsContainer = document.getElementById("yt-playlists-container");
+  const ytPlaylistsErrorBox = document.getElementById("yt-playlists-error-box");
+  const ytPlaylistsErrorMsg = document.getElementById("yt-playlists-error-msg");
+  const btnYtModalFallback = document.getElementById("btn-yt-modal-fallback");
+  let currentTargetYtItem = null;
+
+  if (btnCloseYtModal) {
+    btnCloseYtModal.addEventListener("click", () => {
+      if (modalYtPlaylists) modalYtPlaylists.style.display = "none";
+    });
+  }
+
+  if (modalYtPlaylists) {
+    modalYtPlaylists.addEventListener("click", (e) => {
+      if (e.target === modalYtPlaylists) {
+        modalYtPlaylists.style.display = "none";
+      }
+    });
+  }
+
+  if (btnYtModalFallback) {
+    btnYtModalFallback.addEventListener("click", () => {
+      if (!currentTargetYtItem) return;
+      if (modalYtPlaylists) modalYtPlaylists.style.display = "none";
+      const targetUrl = currentTargetYtItem.url.includes("?")
+        ? `${currentTargetYtItem.url}&dali_save=1`
+        : `${currentTargetYtItem.url}?dali_save=1`;
+      chrome.tabs.create({ url: targetUrl, active: true });
+    });
+  }
+
+  // 儲存影片至 YouTube 播放清單 (彈窗列出使用者清單並直接選擇勾選，截圖 44)
   function saveToYouTubePlaylist(item) {
     if (!item || item.platform !== "youtube") {
       setStatus(t("ytOnlyError") || "此功能僅支援 YouTube 影片", "error");
       return;
     }
 
-    const videoId = item.videoId;
-    let targetUrl = item.url || `https://www.youtube.com/watch?v=${videoId}`;
-    if (!targetUrl.includes("dali_save=1")) {
-      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "dali_save=1";
-    }
+    currentTargetYtItem = item;
 
-    chrome.tabs.query({ url: "*://*.youtube.com/*" }, (tabs) => {
-      let matchedTab = null;
-      if (tabs && tabs.length > 0) {
-        for (const tab of tabs) {
-          if (tab.url && videoId && tab.url.includes(videoId)) {
-            matchedTab = tab;
-            break;
+    if (modalYtPlaylists) {
+      modalYtPlaylists.style.display = "flex";
+    }
+    if (ytModalTargetTitle) {
+      ytModalTargetTitle.textContent = item.title || "YouTube 影片";
+    }
+    if (ytPlaylistsLoading) ytPlaylistsLoading.style.display = "flex";
+    if (ytPlaylistsContainer) {
+      ytPlaylistsContainer.style.display = "none";
+      ytPlaylistsContainer.replaceChildren(); // 安全清空
+    }
+    if (ytPlaylistsErrorBox) ytPlaylistsErrorBox.style.display = "none";
+
+    // 向 Background 查詢此帳號目前在 YouTube 的所有播放清單
+    chrome.runtime.sendMessage({ action: "GET_YT_PLAYLISTS", videoId: item.videoId }, (res) => {
+      if (ytPlaylistsLoading) ytPlaylistsLoading.style.display = "none";
+
+      if (!res || !res.success || !Array.isArray(res.playlists)) {
+        if (ytPlaylistsErrorBox) {
+          ytPlaylistsErrorBox.style.display = "flex";
+          if (ytPlaylistsErrorMsg) {
+            ytPlaylistsErrorMsg.textContent = res?.error || "尚未在瀏覽器中登入 YouTube 帳號";
           }
         }
+        return;
       }
 
-      if (matchedTab && matchedTab.id) {
-        chrome.tabs.update(matchedTab.id, { active: true }, () => {
-          if (matchedTab.windowId) {
-            chrome.windows.update(matchedTab.windowId, { focused: true });
-          }
-          chrome.tabs.sendMessage(matchedTab.id, { action: "OPEN_YT_SAVE_PANEL" });
-          setStatus(t("statusYtSaveOpening") || "正在開啟 YouTube 儲存清單面板...", "success");
-        });
-      } else {
-        chrome.tabs.create({ url: targetUrl, active: true }, () => {
-          setStatus(t("statusYtSaveOpening") || "已在 YouTube 開啟並呼叫儲存清單面板！", "success");
-        });
-      }
+      renderYouTubePlaylistsModal(res.playlists, item);
     });
+  }
+
+  // 渲染截圖 44 播放清單選單 (無新增群組按鈕)
+  function renderYouTubePlaylistsModal(playlists, item) {
+    if (!ytPlaylistsContainer) return;
+    ytPlaylistsContainer.replaceChildren();
+
+    if (playlists.length === 0) {
+      const emptyDiv = document.createElement("div");
+      emptyDiv.style.padding = "20px";
+      emptyDiv.style.textAlign = "center";
+      emptyDiv.style.color = "#94a3b8";
+      emptyDiv.textContent = "未找到任何播放清單";
+      ytPlaylistsContainer.appendChild(emptyDiv);
+      ytPlaylistsContainer.style.display = "flex";
+      return;
+    }
+
+    playlists.forEach((pl) => {
+      const itemRow = document.createElement("div");
+      itemRow.className = `yt-playlist-item ${pl.contains ? "is-selected" : ""}`;
+      itemRow.dataset.playlistId = pl.playlistId;
+
+      const leftBox = document.createElement("div");
+      leftBox.className = "yt-playlist-left";
+
+      // 封面縮圖
+      let thumbEl;
+      if (pl.thumbnail) {
+        thumbEl = document.createElement("img");
+        thumbEl.className = "yt-playlist-thumb";
+        thumbEl.src = pl.thumbnail;
+        thumbEl.alt = "";
+        thumbEl.addEventListener("error", function () {
+          this.style.display = "none";
+        }, { once: true });
+      } else {
+        thumbEl = document.createElement("div");
+        thumbEl.className = "yt-playlist-thumb";
+        thumbEl.textContent = pl.playlistId === "WL" ? "🕒" : "📁";
+      }
+
+      // 文字
+      const textBox = document.createElement("div");
+      textBox.className = "yt-playlist-text-box";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "yt-playlist-name";
+      nameSpan.textContent = pl.title;
+      nameSpan.title = pl.title;
+
+      const privSpan = document.createElement("span");
+      privSpan.className = "yt-playlist-privacy";
+      privSpan.textContent = pl.privacy || "私人";
+
+      textBox.append(nameSpan, privSpan);
+      leftBox.append(thumbEl, textBox);
+
+      // 右側狀態圖標 (截圖 44 格式：已勾選 🔖，未勾選 📑)
+      const checkSpan = document.createElement("span");
+      checkSpan.className = "yt-playlist-check";
+      checkSpan.textContent = pl.contains ? "🔖" : "📑";
+      checkSpan.title = pl.contains ? "已在此清單內 (點擊移除)" : "未在此清單 (點擊加入)";
+
+      itemRow.append(leftBox, checkSpan);
+
+      // 點擊事件：一鍵加入或移出播放清單
+      itemRow.addEventListener("click", () => {
+        const currentlyContains = itemRow.classList.contains("is-selected");
+        const nextState = !currentlyContains;
+
+        itemRow.classList.add("is-updating");
+        checkSpan.textContent = "⌛";
+
+        chrome.runtime.sendMessage(
+          {
+            action: "TOGGLE_YT_PLAYLIST",
+            videoId: item.videoId,
+            playlistId: pl.playlistId,
+            add: nextState
+          },
+          (toggleRes) => {
+            itemRow.classList.remove("is-updating");
+
+            if (toggleRes && toggleRes.success) {
+              if (nextState) {
+                itemRow.classList.add("is-selected");
+                checkSpan.textContent = "🔖";
+                checkSpan.title = "已在此清單內 (點擊移除)";
+                setStatus(`✓ 已將影片加入「${pl.title}」！`, "success");
+              } else {
+                itemRow.classList.remove("is-selected");
+                checkSpan.textContent = "📑";
+                checkSpan.title = "未在此清單 (點擊加入)";
+                setStatus(`✓ 已從「${pl.title}」清單移除！`, "success");
+              }
+            } else {
+              checkSpan.textContent = currentlyContains ? "🔖" : "📑";
+              setStatus(toggleRes?.error || "操作失敗，請稍後重試", "error");
+            }
+          }
+        );
+      });
+
+      ytPlaylistsContainer.appendChild(itemRow);
+    });
+
+    ytPlaylistsContainer.style.display = "flex";
   }
 
   /**
