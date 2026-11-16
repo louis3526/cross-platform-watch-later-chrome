@@ -27,10 +27,12 @@
     if (msg?.action === "GET_ACTIVE_SHORT_INFO") {
       const st = singleShortBtnState;
       const thumb = st.thumb || captureVideoFrame(st.videoEl);
+      const dur = extractShortVideoDuration(st.videoEl || findVisibleCenterVideo(), document);
       sendResponse({
         url: st.url || location.href.split("?")[0],
         title: st.title || document.title,
-        thumbnail: thumb || ""
+        thumbnail: thumb || "",
+        duration: dur || ""
       });
       return true;
     }
@@ -303,6 +305,46 @@
   }
 
   /**
+   * 將秒數轉換為 MM:SS 或 H:MM:SS 格式
+   */
+  function formatSecondsToTimeStr(sec) {
+    if (!Number.isFinite(sec) || sec <= 0) return "";
+    const total = Math.round(sec);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const sStr = s < 10 ? `0${s}` : `${s}`;
+    return h > 0 ? `${h}:${m < 10 ? "0" : ""}${m}:${sStr}` : `${m}:${sStr}`;
+  }
+
+  /**
+   * 讀取短片 <video> 元素的真實總片長 (支援 TikTok 與 Facebook Reels)
+   */
+  function extractShortVideoDuration(videoEl, rootEl) {
+    try {
+      const targetVideo = videoEl || findVisibleCenterVideo();
+      if (targetVideo && Number.isFinite(targetVideo.duration) && targetVideo.duration > 0) {
+        return formatSecondsToTimeStr(targetVideo.duration);
+      }
+
+      // 備援：從頁面上常見的時間指示文字提取總長度 (如 "00:12 / 00:45")
+      const scope = rootEl || document;
+      const candidates = scope.querySelectorAll(
+        "[data-e2e='video-duration'], [class*='SeekBarTime'], [class*='TimeContainer'], [class*='duration'], span, div"
+      );
+      for (const el of candidates) {
+        if (el.children.length > 0) continue;
+        const txt = (el.textContent || "").trim();
+        if (!txt || txt.length > 22) continue;
+        // 若是 "0:10 / 0:45" 取斜線後方的總長
+        const slashMatch = txt.match(/^\d{1,2}:\d{2}\s*\/\s*((?:\d{1,2}:)?\d{1,2}:\d{2})$/);
+        if (slashMatch) return slashMatch[1];
+      }
+    } catch (e) {}
+    return "";
+  }
+
+  /**
    * 找到目前畫面正中央 / 正在播放的單一主 <video>（不改動平台內部 DOM）
    */
   function findVisibleCenterVideo() {
@@ -385,10 +427,11 @@
 
         const st = singleShortBtnState;
         const thumb = st.thumb || captureVideoFrame(st.videoEl);
+        const dur = extractShortVideoDuration(st.videoEl, document);
 
         try {
           chrome.runtime.sendMessage(
-            { action: "PARSE_AND_ADD", url: st.url, title: st.title, duration: "", thumbnail: thumb },
+            { action: "PARSE_AND_ADD", url: st.url, title: st.title, duration: dur, thumbnail: thumb },
             (res) => {
               if (chrome.runtime.lastError || !res || !res.success) {
                 btn.classList.remove("cppd-added");

@@ -804,6 +804,51 @@ document.addEventListener("DOMContentLoaded", () => {
           .catch((e) => console.warn("Live fetch YouTube duration:", e));
       }
 
+      // 前端即時自動校正 TikTok / Facebook Reels 缺失時長
+      if ((item.platform === "tiktok" || item.platform === "facebook") && !cleanDuration && item.url) {
+        fetch(item.url)
+          .then((r) => r.text())
+          .then((html) => {
+            let sec = 0;
+            if (item.platform === "tiktok") {
+              const ttMatch = html.match(/"video"\s*:\s*\{[^}]*?"duration"\s*:\s*(\d+)/) ||
+                              html.match(/"duration"\s*:\s*(\d+)/);
+              if (ttMatch) sec = parseInt(ttMatch[1], 10);
+            } else {
+              const msMatch = html.match(/"playable_duration_in_ms"\s*:\s*(\d+)/);
+              const secMatch = html.match(/"length_in_second"\s*:\s*(\d+)/) ||
+                               html.match(/"duration_in_sec"\s*:\s*(\d+)/);
+              if (msMatch) sec = Math.round(parseInt(msMatch[1], 10) / 1000);
+              else if (secMatch) sec = parseInt(secMatch[1], 10);
+            }
+
+            if (sec > 0 && sec < 86400) {
+              const h = Math.floor(sec / 3600);
+              const m = Math.floor((sec % 3600) / 60);
+              const s = sec % 60;
+              const sStr = s < 10 ? `0${s}` : `${s}`;
+              const realDur = h > 0 ? `${h}:${m < 10 ? "0" : ""}${m}:${sStr}` : `${m}:${sStr}`;
+              item.duration = realDur;
+
+              const metaBox = li.querySelector(".item-meta");
+              if (metaBox && !metaBox.querySelector(".item-duration-tag")) {
+                const tag = document.createElement("span");
+                tag.className = "item-duration-tag";
+                const bEl = document.createElement("b");
+                bEl.textContent = realDur;
+                tag.append(document.createTextNode(`${t("durationLabel")} `), bEl);
+                const dot = document.createElement("span");
+                dot.className = "meta-dot";
+                dot.textContent = "•";
+                metaBox.prepend(dot);
+                metaBox.prepend(tag);
+              }
+              savePlaylist(currentPlaylist);
+            }
+          })
+          .catch((e) => console.warn(`Live fetch ${item.platform} duration:`, e));
+      }
+
       // 雙擊縮圖立即播放此影片
       const thumbBox = li.querySelector(".item-thumb-box");
       if (thumbBox) {
@@ -1477,9 +1522,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       setStatus(t("statusAddCurrent"), "info");
 
-      const sendAdd = (url, title, thumbnail = "") => {
+      const sendAdd = (url, title, thumbnail = "", duration = "") => {
         chrome.runtime.sendMessage(
-          { action: "PARSE_AND_ADD", url, title, thumbnail },
+          { action: "PARSE_AND_ADD", url, title, duration, thumbnail },
           (res) => {
             if (res && res.success) {
               setStatus(t("statusCurrentAdded", { title: res.item.title }), "success");
@@ -1493,13 +1538,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (activeTab.url.includes("tiktok.com") || activeTab.url.includes("facebook.com")) {
         chrome.tabs.sendMessage(activeTab.id, { action: "GET_ACTIVE_SHORT_INFO" }, (info) => {
           if (!chrome.runtime.lastError && info && info.url) {
-            sendAdd(info.url, info.title || activeTab.title, info.thumbnail || "");
+            sendAdd(info.url, info.title || activeTab.title, info.thumbnail || "", info.duration || "");
           } else {
-            sendAdd(activeTab.url, activeTab.title, "");
+            sendAdd(activeTab.url, activeTab.title, "", "");
           }
         });
       } else {
-        sendAdd(activeTab.url, activeTab.title, "");
+        sendAdd(activeTab.url, activeTab.title, "", "");
       }
     });
   });

@@ -512,6 +512,11 @@ async function parseVideoInfo(rawUrl, fallbackTitle = "", fallbackDuration = "",
     if (!title) title = `TikTok 影片 (${videoId})`;
     if (!thumbnail) thumbnail = "icons/icon48.png";
 
+    let duration = fallbackDuration || "";
+    if (!duration) {
+      duration = await fetchShortVideoDurationFromHtml(canonicalUrl, "tiktok");
+    }
+
     return {
       id: "tt_" + videoId + "_" + Date.now().toString(36),
       platform: "tiktok",
@@ -519,7 +524,7 @@ async function parseVideoInfo(rawUrl, fallbackTitle = "", fallbackDuration = "",
       url: canonicalUrl,
       title: title.replace(/\s*\|\s*TikTok$/, ""),
       thumbnail,
-      duration: fallbackDuration || "",
+      duration,
       addedAt: Date.now()
     };
   }
@@ -534,6 +539,11 @@ async function parseVideoInfo(rawUrl, fallbackTitle = "", fallbackDuration = "",
     if (!title) title = `Facebook Reels (${videoId})`;
     const thumbnail = fallbackThumbnail || "icons/icon48.png";
 
+    let duration = fallbackDuration || "";
+    if (!duration) {
+      duration = await fetchShortVideoDurationFromHtml(canonicalUrl, "facebook");
+    }
+
     return {
       id: "fb_" + videoId + "_" + Date.now().toString(36),
       platform: "facebook",
@@ -541,7 +551,7 @@ async function parseVideoInfo(rawUrl, fallbackTitle = "", fallbackDuration = "",
       url: canonicalUrl,
       title: title.replace(/\s*\|\s*Facebook$/, ""),
       thumbnail,
-      duration: fallbackDuration || "",
+      duration,
       addedAt: Date.now()
     };
   }
@@ -847,6 +857,12 @@ async function backfillMissingDurations() {
       } catch (e) {
         console.warn("Backfill YouTube error:", e);
       }
+    } else if ((item.platform === "tiktok" || item.platform === "facebook") && item.url) {
+      const dur = await fetchShortVideoDurationFromHtml(item.url, item.platform);
+      if (dur) {
+        item.duration = dur;
+        updated = true;
+      }
     }
   }
 
@@ -854,6 +870,42 @@ async function backfillMissingDurations() {
     await saveSyncedPlaylist(list);
   }
   isBackfilling = false;
+}
+
+/**
+ * 嘗試從 TikTok 或 Facebook 影片頁面 HTML 解析真實片長 (MM:SS / H:MM:SS)
+ */
+async function fetchShortVideoDurationFromHtml(url, platform) {
+  if (!url) return "";
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return "";
+    const html = await resp.text();
+    let sec = 0;
+
+    if (platform === "tiktok") {
+      const ttMatch = html.match(/"video"\s*:\s*\{[^}]*?"duration"\s*:\s*(\d+)/) ||
+                      html.match(/"duration"\s*:\s*(\d+)/);
+      if (ttMatch) sec = parseInt(ttMatch[1], 10);
+    } else if (platform === "facebook") {
+      const msMatch = html.match(/"playable_duration_in_ms"\s*:\s*(\d+)/);
+      const secMatch = html.match(/"length_in_second"\s*:\s*(\d+)/) ||
+                       html.match(/"duration_in_sec"\s*:\s*(\d+)/);
+      if (msMatch) sec = Math.round(parseInt(msMatch[1], 10) / 1000);
+      else if (secMatch) sec = parseInt(secMatch[1], 10);
+    }
+
+    if (sec > 0 && sec < 86400) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      const sStr = s < 10 ? `0${s}` : `${s}`;
+      return h > 0 ? `${h}:${m < 10 ? "0" : ""}${m}:${sStr}` : `${m}:${sStr}`;
+    }
+  } catch (e) {
+    console.warn(`fetchShortVideoDurationFromHtml (${platform}) error:`, e);
+  }
+  return "";
 }
 
 /* ==========================================================================
