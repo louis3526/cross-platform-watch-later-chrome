@@ -27,7 +27,9 @@
     "https://api.bilibili.com/*",
     "https://noembed.com/*",
     "https://api.cl1p.net/*",
-    "https://api.npoint.io/*"
+    "https://api.npoint.io/*",
+    "https://api.github.com/*",
+    "https://github.com/*"
   ],
   "background": {
     "service_worker": "background.js"

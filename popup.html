@@ -22,6 +22,9 @@
           <option value="zh-TW">繁體中文</option>
           <option value="en">English</option>
         </select>
+        <button id="btn-software-update" class="btn btn-warning btn-sm" title="軟體一鍵更新與版本同步">
+          🚀 軟體更新
+        </button>
         <div class="header-badge" id="list-counter">0 部影片</div>
         <button id="btn-open-tab" class="btn btn-secondary btn-sm" title="在新分頁開啟全螢幕大視窗檢視">
           ⤢ 開啟全螢幕大分頁
@@ -251,6 +254,66 @@
       <!-- 雲端同步提示 -->
       <div class="cross-groups-sync-tip">
         <span>☁️ 跨平台群組已打通雙電腦同步中繼站，在任一台電腦修改均可隨時同步！</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 軟體一鍵更新中心 Modal -->
+  <div id="modal-software-update" class="modal-overlay" style="display: none;">
+    <div class="modal-box update-modal-box">
+      <div class="update-modal-header">
+        <h3 id="update-modal-title">🚀 軟體一鍵更新中心</h3>
+        <button id="btn-close-update-modal" class="btn-icon" title="關閉" style="font-size: 16px; padding: 4px 8px;">✕</button>
+      </div>
+
+      <!-- 更新狀態卡片 -->
+      <div class="update-status-card">
+        <div class="update-status-row">
+          <span class="update-label">本機版本 Commit:</span>
+          <span id="update-local-commit" class="update-val font-mono">3e2ea36</span>
+        </div>
+        <div class="update-status-row">
+          <span class="update-label">GitHub 最新提交:</span>
+          <span id="update-remote-commit" class="update-val font-mono">檢查中...</span>
+        </div>
+        <div id="update-status-banner" class="update-status-banner checking">
+          <span class="update-spinner">⏳</span> 正在連線 GitHub 查詢最新版本...
+        </div>
+        <div id="update-commit-log" class="update-commit-log" style="display: none;"></div>
+      </div>
+
+      <!-- 一鍵操作按鈕區 -->
+      <div class="update-action-grid">
+        <button id="btn-reload-extension-core" class="btn btn-primary update-card-btn" title="立即重新載入擴充功能核心">
+          <span class="action-icon">🔄</span>
+          <div class="action-details">
+            <span class="action-title">一鍵重新載入插件</span>
+            <span class="action-desc">免手動開 chrome://extensions，原地重載最新代碼</span>
+          </div>
+        </button>
+
+        <button id="btn-download-latest-zip" class="btn btn-success update-card-btn" title="下載 GitHub 最新 ZIP 壓縮包">
+          <span class="action-icon">📥</span>
+          <div class="action-details">
+            <span class="action-title">下載最新完整包 (ZIP)</span>
+            <span class="action-desc">一鍵下載 GitHub 最新 main.zip 解壓縮覆蓋</span>
+          </div>
+        </button>
+
+        <button id="btn-copy-git-pull" class="btn btn-secondary update-card-btn" title="複製 Git 一鍵更新指令">
+          <span class="action-icon">⚡</span>
+          <div class="action-details">
+            <span class="action-title">複製 Git 一鍵更新指令</span>
+            <span class="action-desc">git pull origin main（另一台電腦貼上秒同步）</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- 雙電腦更新說明與批次檔提示 -->
+      <div class="update-tips-box">
+        💡 <b>雙電腦一鍵更新密技</b>：<br>
+        1. <b>若另一部電腦是用 Git 安裝</b>：直接雙擊外掛資料夾裡的 <code>一鍵更新.bat</code> 即可全自動完成拉取與更新！<br>
+        2. <b>若用檔案覆蓋</b>：下載最新 ZIP 解壓縮覆蓋後，點擊上方 <b>「🔄 一鍵重新載入插件」</b> 即可立即生效！
       </div>
     </div>
   </div>
