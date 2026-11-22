@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "跨平台稍後觀看自動播放器 (YouTube & Bilibili)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "混合收納 YouTube 與 Bilibili 稍後觀看影片，自訂拖曳排序，支援跨平台全自動連續播放！",
   "browser_specific_settings": {
     "gecko": {

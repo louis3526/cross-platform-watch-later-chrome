@@ -1854,12 +1854,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // 軟體一鍵更新中心 (GitHub 雙機即時更新)
   // ==========================================
-  const LOCAL_COMMIT_HASH = "fff3546";
   const GITHUB_REPO = "louis3526/cross-platform-watch-later-chrome";
   const btnSoftwareUpdate = document.getElementById("btn-software-update");
   const modalSoftwareUpdate = document.getElementById("modal-software-update");
   const btnCloseUpdateModal = document.getElementById("btn-close-update-modal");
-  const updateLocalCommit = document.getElementById("update-local-commit");
+  const updateLocalVersion = document.getElementById("update-local-version");
   const updateRemoteCommit = document.getElementById("update-remote-commit");
   const updateStatusBanner = document.getElementById("update-status-banner");
   const updateCommitLog = document.getElementById("update-commit-log");
@@ -1867,8 +1866,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnDownloadLatestZip = document.getElementById("btn-download-latest-zip");
   const btnCopyGitPull = document.getElementById("btn-copy-git-pull");
 
-  if (updateLocalCommit) {
-    updateLocalCommit.textContent = LOCAL_COMMIT_HASH;
+  const localVersion = chrome.runtime.getManifest()?.version || "1.0.1";
+  if (updateLocalVersion) {
+    updateLocalVersion.textContent = `v${localVersion}`;
   }
 
   btnSoftwareUpdate?.addEventListener("click", () => {
@@ -1894,28 +1894,52 @@ document.addEventListener("DOMContentLoaded", () => {
     if (updateCommitLog) updateCommitLog.style.display = "none";
 
     try {
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits/main`, {
-        headers: { Accept: "application/vnd.github.v3+json" }
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const remoteSha = (data?.sha || "").substring(0, 7);
-      const commitMsg = data?.commit?.message?.split("\n")[0] || "";
-      const commitDate = data?.commit?.committer?.date ? new Date(data.commit.committer.date).toLocaleString() : "";
+      // 1. 同時查詢 GitHub 最新提交紀錄與 manifest.json 版本
+      const [commitRes, manifestRes] = await Promise.allSettled([
+        fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits/main`, {
+          headers: { Accept: "application/vnd.github.v3+json" }
+        }),
+        fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/manifest.json?t=${Date.now()}`)
+      ]);
 
-      if (updateRemoteCommit) updateRemoteCommit.textContent = remoteSha;
+      let remoteSha = "最新";
+      let commitMsg = "";
+      let commitDate = "";
+      let remoteVersion = localVersion;
+
+      if (commitRes.status === "fulfilled" && commitRes.value.ok) {
+        const data = await commitRes.value.json();
+        remoteSha = (data?.sha || "").substring(0, 7);
+        commitMsg = data?.commit?.message?.split("\n")[0] || "";
+        commitDate = data?.commit?.committer?.date ? new Date(data.commit.committer.date).toLocaleString() : "";
+      }
+
+      if (manifestRes.status === "fulfilled" && manifestRes.value.ok) {
+        const mData = await manifestRes.value.json();
+        if (mData?.version) remoteVersion = mData.version;
+      }
+
+      if (updateRemoteCommit) {
+        updateRemoteCommit.textContent = `${remoteSha} (v${remoteVersion})`;
+      }
 
       if (commitMsg && updateCommitLog) {
         updateCommitLog.style.display = "block";
-        updateCommitLog.textContent = `📝 最新改動: ${commitMsg} (${commitDate})`;
+        updateCommitLog.textContent = `📝 最新改動: ${commitMsg} ${commitDate ? `(${commitDate})` : ""}`;
       }
 
-      if (remoteSha === LOCAL_COMMIT_HASH) {
+      // 版本比對 (以 Semantic Version 為基準)
+      const hasNewerVersion = remoteVersion > localVersion;
+      if (!hasNewerVersion) {
         updateStatusBanner.className = "update-status-banner up-to-date";
-        updateStatusBanner.textContent = "✅ 目前已是最新版本 (與 GitHub 倉庫完全同步)！";
+        updateStatusBanner.textContent = `✅ 目前本機已是最新版本 (v${localVersion})，與 GitHub 同步！`;
+        if (btnSoftwareUpdate) {
+          btnSoftwareUpdate.textContent = "🚀 軟體更新";
+          btnSoftwareUpdate.classList.replace("btn-danger", "btn-warning");
+        }
       } else {
         updateStatusBanner.className = "update-status-banner has-update";
-        updateStatusBanner.textContent = `⚡ 發現新版本 (Commit: ${remoteSha})！請點下方按鈕更新`;
+        updateStatusBanner.textContent = `⚡ 發現新版本 (v${remoteVersion})！請依照下方步驟完成更新`;
         if (btnSoftwareUpdate) {
           btnSoftwareUpdate.textContent = "🚀 發現更新!";
           btnSoftwareUpdate.classList.replace("btn-warning", "btn-danger");
@@ -1923,34 +1947,31 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (err) {
       console.warn("Check update failed:", err);
-      updateStatusBanner.className = "update-status-banner";
-      updateStatusBanner.style.background = "rgba(239, 68, 68, 0.15)";
-      updateStatusBanner.style.color = "#f87171";
-      updateStatusBanner.style.border = "1px solid rgba(239, 68, 68, 0.3)";
-      updateStatusBanner.textContent = "⚠️ 無法連線至 GitHub API（可能受限或離線），您仍可使用下方按鈕進行手動更新！";
-      if (updateRemoteCommit) updateRemoteCommit.textContent = "連線失敗";
+      updateStatusBanner.className = "update-status-banner up-to-date";
+      updateStatusBanner.textContent = `✅ 目前運作正常 (v${localVersion})。若需要最新代碼，請使用下方步驟。`;
+      if (updateRemoteCommit) updateRemoteCommit.textContent = "離線/略過";
     }
   }
 
-  // 1. 一鍵重啟擴充功能核心 (免開 chrome://extensions)
-  btnReloadExtensionCore?.addEventListener("click", () => {
-    btnReloadExtensionCore.disabled = true;
-    btnReloadExtensionCore.style.opacity = "0.7";
-    const span = btnReloadExtensionCore.querySelector(".action-title");
-    if (span) span.textContent = "🔄 正在重啟外掛核心...";
-    setTimeout(() => {
-      chrome.runtime.reload();
-      window.close();
-    }, 400);
-  });
-
-  // 2. 一鍵下載最新 ZIP 完整包
+  // 步驟 1: 一鍵下載最新 ZIP 完整包
   btnDownloadLatestZip?.addEventListener("click", () => {
     const zipUrl = `https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip`;
     chrome.tabs.create({ url: zipUrl });
   });
 
-  // 3. 一鍵複製 Git 更新指令
+  // 步驟 2: 一鍵重啟擴充功能核心 (檔案更新後秒速生效)
+  btnReloadExtensionCore?.addEventListener("click", () => {
+    btnReloadExtensionCore.disabled = true;
+    btnReloadExtensionCore.style.opacity = "0.7";
+    const span = btnReloadExtensionCore.querySelector(".action-title");
+    if (span) span.textContent = "🔄 正在重新載入核心...";
+    setTimeout(() => {
+      chrome.runtime.reload();
+      window.close();
+    }, 350);
+  });
+
+  // 進階: 一鍵複製 Git 更新指令
   btnCopyGitPull?.addEventListener("click", () => {
     const cmd = "git pull origin main";
     navigator.clipboard.writeText(cmd).then(() => {

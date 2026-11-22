@@ -269,8 +269,8 @@
       <!-- 更新狀態卡片 -->
       <div class="update-status-card">
         <div class="update-status-row">
-          <span class="update-label">本機版本 Commit:</span>
-          <span id="update-local-commit" class="update-val font-mono">fff3546</span>
+          <span class="update-label">本機軟體版本:</span>
+          <span id="update-local-version" class="update-val font-mono">v1.0.1</span>
         </div>
         <div class="update-status-row">
           <span class="update-label">GitHub 最新提交:</span>
@@ -284,27 +284,27 @@
 
       <!-- 一鍵操作按鈕區 -->
       <div class="update-action-grid">
-        <button id="btn-reload-extension-core" class="btn btn-primary update-card-btn" title="立即重新載入擴充功能核心">
-          <span class="action-icon">🔄</span>
+        <button id="btn-download-latest-zip" class="btn btn-success update-card-btn" title="下載 GitHub 最新 ZIP 壓縮包覆蓋本機資料夾">
+          <span class="action-icon">📥</span>
           <div class="action-details">
-            <span class="action-title">一鍵重新載入插件</span>
-            <span class="action-desc">免手動開 chrome://extensions，原地重載最新代碼</span>
+            <span class="action-title">步驟 1：下載最新更新包 (ZIP)</span>
+            <span class="action-desc">下載後解壓縮覆蓋本機資料夾（或點一鍵更新.bat）</span>
           </div>
         </button>
 
-        <button id="btn-download-latest-zip" class="btn btn-success update-card-btn" title="下載 GitHub 最新 ZIP 壓縮包">
-          <span class="action-icon">📥</span>
+        <button id="btn-reload-extension-core" class="btn btn-primary update-card-btn" title="立即重新載入擴充功能核心，讓硬碟上的最新代碼生效">
+          <span class="action-icon">🔄</span>
           <div class="action-details">
-            <span class="action-title">下載最新完整包 (ZIP)</span>
-            <span class="action-desc">一鍵下載 GitHub 最新 main.zip 解壓縮覆蓋</span>
+            <span class="action-title">步驟 2：一鍵重新載入插件 (Reload)</span>
+            <span class="action-desc">檔案更新後點此，原地重新載入最新代碼</span>
           </div>
         </button>
 
         <button id="btn-copy-git-pull" class="btn btn-secondary update-card-btn" title="複製 Git 一鍵更新指令">
           <span class="action-icon">⚡</span>
           <div class="action-details">
-            <span class="action-title">複製 Git 一鍵更新指令</span>
-            <span class="action-desc">git pull origin main（另一台電腦貼上秒同步）</span>
+            <span class="action-title">進階快捷：複製 Git 更新指令</span>
+            <span class="action-desc">git pull origin main（若有裝 Git 貼上即更新）</span>
           </div>
         </button>
       </div>
