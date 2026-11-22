@@ -61,7 +61,7 @@ const I18N_DICT = {
 
     // 清單項目
     emptyTitle: "清單空空如也",
-    emptyDesc: "在上方貼上網址，或在 YouTube / B站影片卡片上<br><b>點擊左上方「➕ 稍後連播」浮動按鈕</b>！",
+    emptyDesc: "在上方貼上網址，或在 YouTube / B站影片卡片上<br><b>點擊上方「➕ 稍後連播」浮動按鈕</b>！",
     dragHandleTitle: "按住滑鼠左鍵拖曳重新排列順序",
     thumbDblClickTitle: "按兩下滑鼠左鍵立即播放此影片",
     thumbPlayOverlayTitle: "按兩下立即播放",

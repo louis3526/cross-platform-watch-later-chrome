@@ -145,7 +145,8 @@
 .cppd-thumb-btn-wrapper {
   position: absolute !important;
   top: 8px !important;
-  left: 8px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
   z-index: 2147483640 !important;
   pointer-events: auto !important;
   display: block !important;
@@ -175,6 +176,7 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6) !important;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
   user-select: none !important;
+  white-space: nowrap !important;
   line-height: 1 !important;
   pointer-events: auto !important;
 }
