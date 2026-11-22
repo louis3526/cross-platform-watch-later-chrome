@@ -642,7 +642,7 @@
    * Facebook Reels / Watch 影片注入 (無侵入單一浮動按鈕，絕不洗版也不影響播放)
    */
   function injectFacebookCards() {
-    // 1. Reels 獨立/滑動檢視模式 (/reel/... 或 /reels/...)：僅對畫面中心唯一的主 <video> 顯示左上角按鈕
+    // 1. Reels 獨立/滑動檢視模式 (/reel/... 或 /reels/...)：僅對畫面中心唯一的主 <video> 顯示中央置頂按鈕
     if (location.pathname.includes("/reel")) {
       const activeVideo = findVisibleCenterVideo();
       if (activeVideo) {
@@ -656,26 +656,116 @@
       return;
     }
 
-    // 2. Facebook 動態時報 / Watch 列表：僅在包含大型封面圖的連結上掛載
+    // 2. Facebook 動態時報 / Watch 列表：掛載於每個 Reel 卡片上，縮圖動畫預覽播放時保證常駐不消失且置頂可點
     updateSingleShortFloatingButton(null, "", "", "");
     const links = document.querySelectorAll("a[href*='/reel/'], a[href*='/watch/?v=']");
     links.forEach((linkElem) => {
       const href = linkElem.getAttribute("href");
       if (!href || href.includes("comment_id=")) return;
 
-      const imgEl = linkElem.querySelector("img");
-      if (!imgEl) return;
-      const rect = imgEl.getBoundingClientRect();
-      if (rect.width < 140 || rect.height < 140) return;
-
-      const thumbContainer = imgEl.parentElement;
-      if (!thumbContainer || thumbContainer.querySelector(".cppd-thumb-btn-wrapper")) return;
+      // 檢查卡片尺寸：包含 video 或 img，或 linkElem 本身具備卡片大小（寬度>=90, 高度>=100）
+      const mediaEl = linkElem.querySelector("video, img");
+      const rect = mediaEl ? mediaEl.getBoundingClientRect() : linkElem.getBoundingClientRect();
+      const linkRect = linkElem.getBoundingClientRect();
+      const w = Math.max(rect.width, linkRect.width);
+      const h = Math.max(rect.height, linkRect.height);
+      if (w < 90 || h < 100) return;
 
       const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
-      const title = linkElem.getAttribute("aria-label") || imgEl.getAttribute("alt") || "Facebook Reels";
-      const thumbUrl = imgEl.getAttribute("src") || "";
+      const cleanUrl = fullUrl.split("?")[0].split("&")[0];
 
-      createThumbnailButton(thumbContainer, fullUrl.split("&")[0], title, "", linkElem, thumbUrl);
+      // 擷取標題
+      let title = linkElem.getAttribute("aria-label") || "";
+      if (!title) {
+        const titleEl = linkElem.querySelector("span, div[dir='auto'], strong");
+        title = titleEl?.textContent?.trim() || "";
+      }
+      const imgEl = linkElem.querySelector("img");
+      if (!title && imgEl) {
+        title = imgEl.getAttribute("alt") || "";
+      }
+      if (!title) {
+        title = "Facebook Reels";
+      }
+
+      // 擷取封面縮圖
+      let thumbUrl = imgEl?.getAttribute("src") || "";
+
+      // 確保 linkElem 具有相對定位上下文
+      if (window.getComputedStyle(linkElem).position === "static") {
+        linkElem.style.position = "relative";
+      }
+
+      // 檢查 linkElem 內是否已有按鈕
+      let existingWrapper = linkElem.querySelector(".cppd-thumb-btn-wrapper");
+      if (existingWrapper) {
+        // 若之前被掛在內部將被隱藏的 img.parentElement，提昇至 linkElem 本身
+        if (existingWrapper.parentElement !== linkElem) {
+          linkElem.appendChild(existingWrapper);
+        }
+        // 強制可見與置頂
+        existingWrapper.style.setProperty("display", "block", "important");
+        existingWrapper.style.setProperty("visibility", "visible", "important");
+        existingWrapper.style.setProperty("opacity", "1", "important");
+        existingWrapper.style.setProperty("z-index", "2147483640", "important");
+
+        // 若 Facebook 預覽播放時動態掛載了 <video> 或覆蓋層，移至最末子元素維持最高堆疊順序
+        if (linkElem.lastElementChild !== existingWrapper) {
+          linkElem.appendChild(existingWrapper);
+        }
+      } else {
+        // 直接將按鈕注入於 linkElem（確保縮圖動畫播放時絕不隨 img 被移除或隱藏）
+        createThumbnailButton(linkElem, cleanUrl, title, "", linkElem, thumbUrl);
+      }
+
+      // 綁定卡片 hover 與即時播放監聽，確保滑鼠移入或影片開始播放時按鈕 100% 常駐且置頂
+      if (!linkElem.dataset.cppdReelBound) {
+        linkElem.dataset.cppdReelBound = "true";
+
+        const keepBtnAlive = () => {
+          let btnWrap = linkElem.querySelector(".cppd-thumb-btn-wrapper");
+          if (!btnWrap) {
+            createThumbnailButton(linkElem, cleanUrl, title, "", linkElem, thumbUrl);
+            btnWrap = linkElem.querySelector(".cppd-thumb-btn-wrapper");
+          }
+          if (btnWrap) {
+            btnWrap.style.setProperty("display", "block", "important");
+            btnWrap.style.setProperty("visibility", "visible", "important");
+            btnWrap.style.setProperty("opacity", "1", "important");
+            btnWrap.style.setProperty("z-index", "2147483640", "important");
+            if (linkElem.lastElementChild !== btnWrap) {
+              linkElem.appendChild(btnWrap);
+            }
+          }
+        };
+
+        linkElem.addEventListener("mouseenter", keepBtnAlive, { passive: true });
+        linkElem.addEventListener("mouseover", keepBtnAlive, { passive: true });
+      }
+
+      // 針對卡片內部產生的 <video> 監聽 play/playing 事件
+      const cardVideo = linkElem.querySelector("video");
+      if (cardVideo && !cardVideo.dataset.cppdCardPlayBound) {
+        cardVideo.dataset.cppdCardPlayBound = "true";
+        const onVideoPlay = () => {
+          let btnWrap = linkElem.querySelector(".cppd-thumb-btn-wrapper");
+          if (!btnWrap) {
+            createThumbnailButton(linkElem, cleanUrl, title, "", linkElem, thumbUrl);
+            btnWrap = linkElem.querySelector(".cppd-thumb-btn-wrapper");
+          }
+          if (btnWrap) {
+            btnWrap.style.setProperty("display", "block", "important");
+            btnWrap.style.setProperty("visibility", "visible", "important");
+            btnWrap.style.setProperty("opacity", "1", "important");
+            btnWrap.style.setProperty("z-index", "2147483640", "important");
+            if (linkElem.lastElementChild !== btnWrap) {
+              linkElem.appendChild(btnWrap);
+            }
+          }
+        };
+        cardVideo.addEventListener("play", onVideoPlay, { passive: true });
+        cardVideo.addEventListener("playing", onVideoPlay, { passive: true });
+      }
     });
   }
 
@@ -705,12 +795,18 @@
     setBtnLabel(btn, "➕", ci18n("btnWatchLater"));
     btn.title = ci18n("btnWatchLaterTitle");
 
-    // 徹底防穿透：在 btn 上精確阻斷所有會觸發 YouTube/B 站底層跳轉的指針與滑鼠事件冒泡
+    // 徹底防穿透：在 wrapper 與 btn 上精確阻斷所有會觸發 YouTube/B 站/FB 底層跳轉的指針與滑鼠事件冒泡
     const stopEvents = ["mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend"];
     stopEvents.forEach((evtName) => {
+      wrapper.addEventListener(evtName, (e) => {
+        e.stopPropagation();
+      });
       btn.addEventListener(evtName, (e) => {
         e.stopPropagation();
       });
+    });
+    wrapper.addEventListener("click", (e) => {
+      e.stopPropagation();
     });
 
     // 核心點擊處理函式：阻止默認跳轉並執行加入清單邏輯
