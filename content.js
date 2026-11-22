@@ -476,12 +476,17 @@
       document.body.appendChild(wrapper);
     }
 
-    // 綁定 videoEl 播放與暫停事件，播放中立即消失，暫停時立即顯示
+    // 綁定 videoEl 播放與暫停事件 (Facebook Reels 保持常駐不消失，其他平台播放中自動消失)
     if (videoEl && videoEl.tagName === "VIDEO" && !videoEl.dataset.cppdBoundPlayback) {
       videoEl.dataset.cppdBoundPlayback = "true";
       const syncPlayState = () => {
         const wrap = document.getElementById("cppd-short-floating-wrapper");
         if (!wrap) return;
+        const isFB = location.hostname.includes("facebook.com") && location.pathname.includes("/reel");
+        if (isFB) {
+          wrap.classList.remove("cppd-playing-hidden");
+          return;
+        }
         if (!videoEl.paused && !videoEl.ended) {
           if (!isMouseOverShortFloating) {
             wrap.classList.add("cppd-playing-hidden");
@@ -510,21 +515,33 @@
 
     singleShortBtnState = { url: fullUrl, title, thumb: thumbUrl, videoEl };
 
-    // 精準定位於當前可見影片的左上角 (使用 !important 蓋過 .cppd-thumb-btn-wrapper 的預設 top/left)
-    const isTT = location.hostname.includes("tiktok.com");
-    const leftOffset = isTT && rect.width > 260 ? 48 : 14;
+    // Facebook Reels 專屬置中定位：避免遮擋左上方音量鍵，自動精準錨定於影片正上方正中間
+    const isFBReels = location.hostname.includes("facebook.com") && location.pathname.includes("/reel");
     wrapper.style.setProperty("display", "block", "important");
     wrapper.style.setProperty("position", "fixed", "important");
-    wrapper.style.setProperty("top", `${Math.max(12, Math.round(rect.top + 12))}px`, "important");
-    wrapper.style.setProperty("left", `${Math.max(12, Math.round(rect.left + leftOffset))}px`, "important");
     wrapper.style.setProperty("z-index", "2147483647", "important");
 
-    // 影片播放中自動消失隱藏；暫停時自動顯示
-    const isPlaying = videoEl.tagName === "VIDEO" ? (!videoEl.paused && !videoEl.ended) : false;
-    if (isPlaying && !isMouseOverShortFloating) {
-      wrapper.classList.add("cppd-playing-hidden");
-    } else {
+    if (isFBReels) {
+      const centerX = Math.round(rect.left + rect.width / 2);
+      wrapper.style.setProperty("left", `${centerX}px`, "important");
+      wrapper.style.setProperty("transform", "translateX(-50%)", "important");
+      wrapper.style.setProperty("top", `${Math.max(14, Math.round(rect.top + 14))}px`, "important");
+      // Facebook Reels 依指示：播放時不要消失，維持常駐
       wrapper.classList.remove("cppd-playing-hidden");
+    } else {
+      const isTT = location.hostname.includes("tiktok.com");
+      const leftOffset = isTT && rect.width > 260 ? 48 : 14;
+      wrapper.style.setProperty("left", `${Math.max(12, Math.round(rect.left + leftOffset))}px`, "important");
+      wrapper.style.setProperty("transform", "none", "important");
+      wrapper.style.setProperty("top", `${Math.max(12, Math.round(rect.top + 12))}px`, "important");
+
+      // 其他平台播放中自動消失隱藏；暫停時自動顯示
+      const isPlaying = videoEl.tagName === "VIDEO" ? (!videoEl.paused && !videoEl.ended) : false;
+      if (isPlaying && !isMouseOverShortFloating) {
+        wrapper.classList.add("cppd-playing-hidden");
+      } else {
+        wrapper.classList.remove("cppd-playing-hidden");
+      }
     }
   }
 
