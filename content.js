@@ -12,6 +12,7 @@
   let isMinimized = false;
   let activeLang = "zh-TW";
   let singleShortBtnState = { url: "", title: "", thumb: "", videoEl: null };
+  let isMouseOverShortFloating = false;
 
   // 依作業系統/使用者偏好載入語言
   if (typeof getCurrentLanguage === "function") {
@@ -393,12 +394,15 @@
   }
 
   /**
-   * 掛載於 document.body 的單一無侵入浮動加入按鈕 (專用於 TikTok / FB Reels，絕對不修改播放器 DOM 或造成影片卡頓)
+   * 掛載於 document.body 的單一無侵入浮動加入按鈕 (專用於 TikTok / FB Reels / Shorts)
    */
   function updateSingleShortFloatingButton(videoEl, fullUrl, title, thumbUrl) {
     let wrapper = document.getElementById("cppd-short-floating-wrapper");
     if (!videoEl || !fullUrl) {
-      if (wrapper) wrapper.style.display = "none";
+      if (wrapper) {
+        wrapper.style.display = "none";
+        wrapper.classList.add("cppd-playing-hidden");
+      }
       return;
     }
 
@@ -456,8 +460,42 @@
         }
       });
 
+      // 滑鼠懸停守護：滑鼠移入時暫時顯示，移出且播放時自動消失
+      wrapper.addEventListener("mouseenter", () => {
+        isMouseOverShortFloating = true;
+        wrapper.classList.remove("cppd-playing-hidden");
+      });
+      wrapper.addEventListener("mouseleave", () => {
+        isMouseOverShortFloating = false;
+        if (singleShortBtnState.videoEl && !singleShortBtnState.videoEl.paused && !singleShortBtnState.videoEl.ended) {
+          wrapper.classList.add("cppd-playing-hidden");
+        }
+      });
+
       wrapper.appendChild(btn);
       document.body.appendChild(wrapper);
+    }
+
+    // 綁定 videoEl 播放與暫停事件，播放中立即消失，暫停時立即顯示
+    if (videoEl && videoEl.tagName === "VIDEO" && !videoEl.dataset.cppdBoundPlayback) {
+      videoEl.dataset.cppdBoundPlayback = "true";
+      const syncPlayState = () => {
+        const wrap = document.getElementById("cppd-short-floating-wrapper");
+        if (!wrap) return;
+        if (!videoEl.paused && !videoEl.ended) {
+          if (!isMouseOverShortFloating) {
+            wrap.classList.add("cppd-playing-hidden");
+          }
+        } else {
+          wrap.classList.remove("cppd-playing-hidden");
+        }
+      };
+
+      videoEl.addEventListener("play", syncPlayState);
+      videoEl.addEventListener("playing", syncPlayState);
+      videoEl.addEventListener("pause", syncPlayState);
+      videoEl.addEventListener("ended", syncPlayState);
+      videoEl.addEventListener("timeupdate", syncPlayState);
     }
 
     // 若切換到了不同的短片網址，重設按鈕為「➕ 稍後連播」
@@ -480,6 +518,14 @@
     wrapper.style.setProperty("top", `${Math.max(12, Math.round(rect.top + 12))}px`, "important");
     wrapper.style.setProperty("left", `${Math.max(12, Math.round(rect.left + leftOffset))}px`, "important");
     wrapper.style.setProperty("z-index", "2147483647", "important");
+
+    // 影片播放中自動消失隱藏；暫停時自動顯示
+    const isPlaying = videoEl.tagName === "VIDEO" ? (!videoEl.paused && !videoEl.ended) : false;
+    if (isPlaying && !isMouseOverShortFloating) {
+      wrapper.classList.add("cppd-playing-hidden");
+    } else {
+      wrapper.classList.remove("cppd-playing-hidden");
+    }
   }
 
   /**
