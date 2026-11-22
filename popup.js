@@ -1854,7 +1854,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // 軟體一鍵更新中心 (GitHub 雙機即時更新)
   // ==========================================
-  const LOCAL_COMMIT_HASH = "3e2ea36";
+  const LOCAL_COMMIT_HASH = "fff3546";
   const GITHUB_REPO = "louis3526/cross-platform-watch-later-chrome";
   const btnSoftwareUpdate = document.getElementById("btn-software-update");
   const modalSoftwareUpdate = document.getElementById("modal-software-update");
