@@ -227,6 +227,103 @@
       // 建立按鈕元件
       createThumbnailButton(thumbContainer, fullUrl, title, duration, card, thumbUrl);
     });
+
+    // 4. 針對 YouTube 首頁懸停自動預覽播放器 (<ytd-video-preview>) 同步注入按鈕，防止預覽播放時按鈕被覆蓋消失
+    syncYouTubeVideoPreview();
+  }
+
+  /**
+   * 守護 YouTube 首頁全域懸停預覽播放器 (<ytd-video-preview>) 上的「加入稍後連播」按鈕
+   */
+  function syncYouTubeVideoPreview() {
+    const previews = document.querySelectorAll("ytd-video-preview");
+    previews.forEach((previewEl) => {
+      // 綁定屬性監聽器：一旦 active / playing / style / hidden 變化立即同步，零延遲
+      if (!previewEl.dataset.cppdPreviewObserved) {
+        previewEl.dataset.cppdPreviewObserved = "true";
+        const attrObserver = new MutationObserver(() => {
+          syncYouTubeVideoPreview();
+        });
+        attrObserver.observe(previewEl, {
+          attributes: true,
+          attributeFilter: ["active", "playing", "hidden", "style", "class"]
+        });
+      }
+
+      const style = window.getComputedStyle(previewEl);
+      const rect = previewEl.getBoundingClientRect();
+      const isVisible =
+        !previewEl.hasAttribute("hidden") &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        parseFloat(style.opacity || "1") > 0 &&
+        rect.width >= 120 &&
+        rect.height >= 80;
+
+      if (!isVisible) return;
+
+      // 優先從預覽器內部連結取得影片網址，若無則反查目前滑鼠懸停的卡片
+      const hoveredCard = document.querySelector(
+        "ytd-rich-item-renderer:hover, ytd-rich-grid-media:hover, yt-lockup-view-model:hover, ytd-video-renderer:hover, ytd-grid-video-renderer:hover"
+      );
+      const previewLink = previewEl.querySelector("a[href*='/watch?v='], a[href*='/shorts/']");
+      const cardLink = hoveredCard?.querySelector("a[href*='/watch?v='], a[href*='/shorts/']");
+      const href = previewLink?.getAttribute("href") || cardLink?.getAttribute("href") || "";
+      if (!href) return;
+
+      const fullUrl = href.startsWith("http") ? href : new URL(href, location.origin).href;
+      const cleanUrl = fullUrl.split("&")[0];
+
+      // 擷取標題、時長與縮圖
+      const sourceCard = hoveredCard || previewEl;
+      const titleElem = sourceCard.querySelector(
+        "#video-title, #video-title-link, .yt-lockup-metadata-view-model__title, .title, h3 a, h3 span"
+      );
+      let title =
+        titleElem?.getAttribute("title") ||
+        titleElem?.textContent?.trim() ||
+        previewLink?.getAttribute("aria-label") ||
+        previewLink?.getAttribute("title") ||
+        cardLink?.getAttribute("title") ||
+        "YouTube 影片";
+
+      const durationElem = sourceCard.querySelector(
+        "#overlays ytd-thumbnail-overlay-time-status-renderer #text, span#text.ytd-thumbnail-overlay-time-status-renderer, .yt-badge-shape__text, ytd-thumbnail-overlay-time-status-renderer"
+      );
+      const rawDur = durationElem?.textContent?.trim() || "";
+      const duration = /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(rawDur) ? rawDur : "";
+
+      const ytImg = sourceCard.querySelector("yt-thumbnail-view-model img, ytd-thumbnail img, #thumbnail img, img");
+      const thumbUrl = ytImg?.getAttribute("src") || ytImg?.currentSrc || "";
+
+      // 掛載容器：優先鎖定 #video-preview-container 或 #media-container，退而求其次為 previewEl 本身
+      const targetContainer =
+        previewEl.querySelector("#video-preview-container, #media-container") || previewEl;
+
+      let existingWrapper = targetContainer.querySelector(":scope > .cppd-thumb-btn-wrapper") || previewEl.querySelector(".cppd-thumb-btn-wrapper");
+      if (existingWrapper && existingWrapper.dataset.cppdUrl !== cleanUrl) {
+        existingWrapper.remove();
+        existingWrapper = null;
+      }
+
+      if (!existingWrapper) {
+        createThumbnailButton(targetContainer, cleanUrl, title, duration, sourceCard, thumbUrl);
+        existingWrapper = targetContainer.querySelector(":scope > .cppd-thumb-btn-wrapper");
+        if (existingWrapper) {
+          existingWrapper.dataset.cppdUrl = cleanUrl;
+        }
+      }
+
+      if (existingWrapper) {
+        existingWrapper.style.setProperty("display", "block", "important");
+        existingWrapper.style.setProperty("visibility", "visible", "important");
+        existingWrapper.style.setProperty("opacity", "1", "important");
+        existingWrapper.style.setProperty("z-index", "2147483640", "important");
+        if (targetContainer.lastElementChild !== existingWrapper) {
+          targetContainer.appendChild(existingWrapper);
+        }
+      }
+    });
   }
 
   /**
