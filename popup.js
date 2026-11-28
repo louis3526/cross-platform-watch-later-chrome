@@ -1866,7 +1866,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnDownloadLatestZip = document.getElementById("btn-download-latest-zip");
   const btnCopyGitPull = document.getElementById("btn-copy-git-pull");
 
-  const localVersion = chrome.runtime.getManifest()?.version || "1.0.3";
+  const localVersion = chrome.runtime.getManifest()?.version || "1.0.4";
   if (updateLocalVersion) {
     updateLocalVersion.textContent = `v${localVersion}`;
   }

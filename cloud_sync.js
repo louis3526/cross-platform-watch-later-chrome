@@ -3,12 +3,17 @@
  * 解決痛點：雙電腦不同時開機、免裝任何軟體、免開 Google 開發者後台
  * 技術特點：
  * 1. 70% 深度輕量化壓縮 (從 15KB 縮減至 2.5KB，徹底避開伺服器 Payload 限制)
- * 2. 雙雲端節點自動備援 (Primary: cl1p.net / Fallback: npoint.io)
+ * 2. 雙雲端節點自動備援 (Primary: cl1p.net / Fallback: ntfy.sh)
  * 3. 支援使用者自訂專屬代碼 (如 louis777 或 dalimaru) 或自動生成
  */
 
 const CL1P_ENDPOINT = "https://api.cl1p.net";
-const NPOINT_ENDPOINT = "https://api.npoint.io";
+const NTFY_ENDPOINT = "https://ntfy.sh";
+
+function getNtfyTopic(code) {
+  const clean = (code || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `cppd-sync-${clean}`;
+}
 
 /**
  * 讀取已綁定的雲端同步碼
@@ -43,7 +48,7 @@ function packListForCloud(list) {
     d: item.duration || "",
     a: item.addedAt || Date.now(),
     u: item.url || "",
-    i: item.thumbnail || "",
+    i: item.thumbnail && !item.thumbnail.startsWith("data:") ? item.thumbnail : "",
     g: Array.isArray(item.groupIds) ? item.groupIds : ["grp_default"]
   }));
 }
@@ -119,37 +124,46 @@ async function uploadToCloudSync(playlist, customCode = null) {
 
   let lastError = null;
 
-  // 節點 1: 優先嘗試 cl1p.net (支援自訂代碼，速度快，不限體積，永久存取)
+  // 節點 1: 優先嘗試 cl1p.net (相容舊版雙機)
   try {
     const cl1pResp = await fetch(`${CL1P_ENDPOINT}/${encodeURIComponent(code)}`, {
       method: "POST",
       headers: { "Content-Type": "text/plain; charset=utf-8" },
       body: jsonStr,
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(20000)
     });
     if (cl1pResp.ok) {
+      // 同步備份一份至 ntfy.sh，避免 cl1p 閱後即焚導致下次拉取為空
+      fetch(`${NTFY_ENDPOINT}/${getNtfyTopic(code)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: jsonStr,
+        signal: AbortSignal.timeout(15000)
+      }).catch(() => {});
       await setCloudSyncCode(code);
       await chrome.storage.local.set({ cloud_last_synced: Date.now() });
       return { success: true, syncCode: code, count: playlist.length, provider: "cl1p" };
     }
+    lastError = new Error(`cl1p HTTP ${cl1pResp.status}`);
   } catch (e) {
     lastError = e;
     console.warn("cl1p.net upload error, trying backup node:", e);
   }
 
-  // 節點 2: 備援節點 api.npoint.io
+  // 節點 2: 備援節點 ntfy.sh (穩定高可用、支援重複讀取)
   try {
-    const npointResp = await fetch(`${NPOINT_ENDPOINT}/${encodeURIComponent(code)}`, {
+    const ntfyResp = await fetch(`${NTFY_ENDPOINT}/${getNtfyTopic(code)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json; charset=utf-8" },
       body: jsonStr,
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(20000)
     });
-    if (npointResp.ok) {
+    if (ntfyResp.ok) {
       await setCloudSyncCode(code);
       await chrome.storage.local.set({ cloud_last_synced: Date.now() });
-      return { success: true, syncCode: code, count: playlist.length, provider: "npoint" };
+      return { success: true, syncCode: code, count: playlist.length, provider: "ntfy" };
     }
+    lastError = new Error(`ntfy HTTP ${ntfyResp.status}`);
   } catch (e) {
     lastError = e;
   }
@@ -175,7 +189,7 @@ async function downloadFromCloudSync(customCode = null) {
   try {
     const cl1pResp = await fetch(`${CL1P_ENDPOINT}/${encodeURIComponent(code)}`, {
       method: "GET",
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(20000)
     });
     if (cl1pResp.ok) {
       const text = await cl1pResp.text();
@@ -203,28 +217,43 @@ async function downloadFromCloudSync(customCode = null) {
     console.warn("cl1p.net download error, trying backup node:", e);
   }
 
-  // 節點 2: 從 npoint.io 讀取
+  // 節點 2: 從 ntfy.sh 讀取最新一筆同步資料 (相容純文字訊息與 >4KB 附件)
   try {
-    const npointResp = await fetch(`${NPOINT_ENDPOINT}/${encodeURIComponent(code)}`, {
+    const ntfyResp = await fetch(`${NTFY_ENDPOINT}/${getNtfyTopic(code)}/json?poll=1&since=all`, {
       method: "GET",
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(20000)
     });
-    if (npointResp.ok) {
-      const data = await npointResp.json();
-      if (data && Array.isArray(data.playlist)) {
-        const unpacked = unpackListFromCloud(data.playlist);
-        if (Array.isArray(data.groups) && data.groups.length > 0) {
-          await chrome.storage.local.set({ video_groups: data.groups });
-        }
-        await setCloudSyncCode(code);
-        await chrome.storage.local.set({ cloud_last_synced: data.updatedAt || Date.now() });
-        return {
-          success: true,
-          playlist: unpacked,
-          groups: data.groups || [],
-          count: unpacked.length,
-          updatedAt: data.updatedAt || Date.now()
-        };
+    if (ntfyResp.ok) {
+      const ndjson = await ntfyResp.text();
+      const lines = ndjson.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const evt = JSON.parse(lines[i]);
+          if (evt.event !== "message") continue;
+          let payloadText = evt.message || "";
+          if (evt.attachment?.url) {
+            const attResp = await fetch(evt.attachment.url, { signal: AbortSignal.timeout(20000) });
+            if (attResp.ok) payloadText = await attResp.text();
+          }
+          if (payloadText && payloadText.trim().startsWith("{")) {
+            const data = JSON.parse(payloadText.trim());
+            if (data && Array.isArray(data.playlist)) {
+              const unpacked = unpackListFromCloud(data.playlist);
+              if (Array.isArray(data.groups) && data.groups.length > 0) {
+                await chrome.storage.local.set({ video_groups: data.groups });
+              }
+              await setCloudSyncCode(code);
+              await chrome.storage.local.set({ cloud_last_synced: data.updatedAt || Date.now() });
+              return {
+                success: true,
+                playlist: unpacked,
+                groups: data.groups || [],
+                count: unpacked.length,
+                updatedAt: data.updatedAt || Date.now()
+              };
+            }
+          }
+        } catch (_) {}
       }
     }
   } catch (e) {
